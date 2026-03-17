@@ -127,7 +127,15 @@ export async function redisRelayToMcpServer(sessionId: string, transport: Transp
           requestId,
           method: ('method' in redisMessage.message ? redisMessage.message.method : undefined)
         });
-        await transport.send(redisMessage.message, redisMessage.options);
+        try {
+          await transport.send(redisMessage.message, redisMessage.options);
+        } catch (sendError) {
+          logger.debug('Client connection closed before relay could deliver', {
+            sessionId,
+            requestId,
+            error: (sendError as Error).message,
+          });
+        }
       }
     }, (error) => {
       logger.error('Error in Redis relay subscription', error, {
