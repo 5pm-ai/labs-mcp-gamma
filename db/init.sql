@@ -99,3 +99,13 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON users TO mcp_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON teams TO mcp_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON team_members TO mcp_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON oauth_clients TO mcp_app;
+
+-- =============================================================================
+-- Default RLS policies (permissive)
+-- Allows mcp_app full access. Replace with scoped policies when RLS
+-- rules are defined (e.g., WHERE user_id = current_setting('app.user_id')).
+-- =============================================================================
+CREATE POLICY allow_all_users ON users FOR ALL TO mcp_app USING (true) WITH CHECK (true);
+CREATE POLICY allow_all_teams ON teams FOR ALL TO mcp_app USING (true) WITH CHECK (true);
+CREATE POLICY allow_all_team_members ON team_members FOR ALL TO mcp_app USING (true) WITH CHECK (true);
+CREATE POLICY allow_all_oauth_clients ON oauth_clients FOR ALL TO mcp_app USING (true) WITH CHECK (true);

@@ -146,9 +146,10 @@ async function main() {
       serviceDocumentationUrl: new URL('https://modelcontextprotocol.io'),
     });
 
+    const mcpEndpointUrl = new URL('/mcp', config.baseUri);
     app.use(mcpAuthMetadataRouter({
       oauthMetadata,
-      resourceServerUrl: new URL(config.baseUri),
+      resourceServerUrl: mcpEndpointUrl,
       serviceDocumentationUrl: new URL('https://modelcontextprotocol.io'),
     }));
   }
