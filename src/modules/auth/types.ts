@@ -28,32 +28,19 @@ export interface TokenExchange {
   alreadyUsed: boolean;
 }
 
-/**
- * Represents mock upstream identity provider tokens for demonstration purposes.
- * In production, this would contain real upstream provider tokens.
- */
-export interface MockUpstreamInstallation {
-  /** Access token from the mock upstream identity provider */
-  mockUpstreamAccessToken: string;
-  /** Refresh token from the mock upstream identity provider */
-  mockUpstreamRefreshToken: string;
+export interface Auth0Installation {
+  auth0AccessToken: string;
+  auth0RefreshToken?: string;
+  auth0IdToken: string;
+  auth0Sub: string;
 }
 
-/**
- * The complete installation object stored in Redis, containing both
- * upstream provider information and MCP-specific tokens.
- * This object is encrypted using the MCP access token as the key.
- */
 export interface McpInstallation {
-  /** Information from the upstream authentication provider */
-  mockUpstreamInstallation: MockUpstreamInstallation;
-  /** MCP OAuth tokens issued to the client */
+  auth0Installation: Auth0Installation;
   mcpTokens: OAuthTokens;
-  /** The OAuth client ID associated with this installation */
   clientId: string;
-  /** Unix timestamp (seconds) when the tokens were issued */
   issuedAt: number;
-  /** Unique identifier for the user (not the OAuth client) */
+  /** Internal user UUID from the users table (not the Auth0 sub) */
   userId: string;
 }
 

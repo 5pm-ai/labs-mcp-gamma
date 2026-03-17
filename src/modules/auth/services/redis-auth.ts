@@ -201,6 +201,21 @@ export async function readRefreshToken(
 }
 
 /**
+ * Atomically reads and deletes the access token associated with a refresh token.
+ * Uses GETDEL to prevent concurrent refresh token reuse (rotation race condition).
+ */
+export async function readRefreshTokenAndDelete(
+  redisClient: RedisClient,
+  refreshToken: string
+): Promise<string | undefined> {
+  return readEncrypted<string>(redisClient, {
+    prefix: REDIS_KEY_PREFIXES.REFRESH_TOKEN,
+    key: refreshToken,
+    del: true,
+  });
+}
+
+/**
  * Revokes an MCP installation.
  */
 export async function revokeMcpInstallation(

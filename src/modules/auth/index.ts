@@ -16,7 +16,7 @@ import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { FeatureReferenceAuthProvider } from './auth/provider.js';
-import { handleMockUpstreamAuthorize, handleMockUpstreamCallback } from './handlers/mock-upstream-idp.js';
+import { handleAuth0Callback } from './handlers/auth0-callback.js';
 import { TokenIntrospectionResponse } from '../../interfaces/auth-validator.js';
 import { logger } from '../shared/logger.js';
 
@@ -125,9 +125,8 @@ export class AuthModule {
       }
     });
 
-    // Mock upstream IDP endpoints (for demo purposes)
-    router.get('/mock-upstream-idp/authorize', authLimiter, handleMockUpstreamAuthorize);
-    router.get('/mock-upstream-idp/callback', authLimiter, handleMockUpstreamCallback);
+    // Auth0 OIDC callback
+    router.get('/auth0/callback', authLimiter, handleAuth0Callback);
 
     // Static assets for auth pages
     router.get('/mcp-logo.png', staticAssetLimiter, (req, res) => {

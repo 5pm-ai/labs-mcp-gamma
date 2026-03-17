@@ -1,8 +1,8 @@
 import { redisClient } from "../../shared/redis.js";
+import { isPostgresReady } from "../../shared/postgres.js";
 import { McpInstallation, PendingAuthorization, TokenExchange } from "../types.js";
 import { OAuthClientInformationFull } from "@modelcontextprotocol/sdk/shared/auth.js";
 
-// Re-export from auth-core module
 export {
   generatePKCEChallenge,
   generateToken,
@@ -11,19 +11,25 @@ export {
 } from "../auth/auth-core.js";
 
 import * as sharedRedisAuth from "./redis-auth.js";
-
-// Wrapper functions that pass redisClient to shared module functions
+import * as pgAuth from "./pg-auth.js";
 
 export async function saveClientRegistration(
   clientId: string,
   registration: OAuthClientInformationFull,
-) {
-  return sharedRedisAuth.saveClientRegistration(redisClient, clientId, registration);
+): Promise<OAuthClientInformationFull> {
+  if (isPostgresReady()) {
+    return pgAuth.saveClientRegistrationPg(clientId, registration);
+  }
+  await sharedRedisAuth.saveClientRegistration(redisClient, clientId, registration);
+  return registration;
 }
 
 export async function getClientRegistration(
   clientId: string,
 ): Promise<OAuthClientInformationFull | undefined> {
+  if (isPostgresReady()) {
+    return pgAuth.getClientRegistrationPg(clientId);
+  }
   return sharedRedisAuth.getClientRegistration(redisClient, clientId);
 }
 
@@ -64,6 +70,16 @@ export async function readRefreshToken(
   refreshToken: string,
 ): Promise<string | undefined> {
   return sharedRedisAuth.readRefreshToken(redisClient, refreshToken);
+}
+
+/**
+ * Atomically consume a refresh token (read + delete).
+ * Prevents concurrent refresh token reuse.
+ */
+export async function consumeRefreshToken(
+  refreshToken: string,
+): Promise<string | undefined> {
+  return sharedRedisAuth.readRefreshTokenAndDelete(redisClient, refreshToken);
 }
 
 export async function revokeMcpInstallation(
