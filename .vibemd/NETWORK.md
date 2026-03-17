@@ -1,8 +1,31 @@
 # Network
 
+## Production Traffic Flow
+
+```
+MCP Client (Cursor / Claude Code / Codex)
+  │  HTTPS (Cloudflare edge cert)
+  ▼
+Cloudflare CDN/Proxy  (gamma.5pm.ai, A -> 34.54.83.204)
+  │  HTTPS (Cloudflare Origin CA cert, Full SSL mode)
+  ▼
+GCP Global External Application Load Balancer
+  │  Forwarding rule :443 -> HTTPS proxy -> URL map
+  │  (HTTP :80 -> 301 redirect to HTTPS)
+  ▼
+Serverless NEG (gamma-mcp-neg, us-east4)
+  │  Google internal ALTS encryption
+  ▼
+Cloud Run (gamma-mcp, ingress: internal-and-cloud-load-balancing)
+  │  Direct VPC Egress (sn-app, 10.10.0.0/24)
+  ├──→ Redis (10.20.1.3:6378, TLS)
+  ├──→ Postgres (10.20.0.3:5432, SSL)
+  └──→ Auth0 (via Cloud NAT, static IP 34.150.236.79)
+```
+
 ## Endpoints
 
-### MCP Server (default port 3232)
+### MCP Server (production: https://gamma.5pm.ai)
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -27,9 +50,35 @@
 | Auth0 | `https://ai-5pm-labs.us.auth0.com/oauth/token` | Token exchange (server-side) |
 | Auth0 | `https://ai-5pm-labs.us.auth0.com/.well-known/openid-configuration` | OIDC discovery |
 
-### Infrastructure (Docker)
+### Infrastructure (Local Dev - Docker)
 
 | Service | Container Port | Host Port | Purpose |
 |---|---|---|---|
 | Redis | 6379 | 6379 | Session/token cache, pub/sub |
 | Postgres | 5432 | 5433 | Durable storage (client reg, users, teams) |
+
+### Infrastructure (Production - GCP us-east4)
+
+| Service | Private IP | Port | Purpose |
+|---|---|---|---|
+| Cloud SQL (gamma-pg) | 10.20.0.3 | 5432 | Durable storage (client reg, users, teams) |
+| Memorystore (gamma-redis) | 10.20.1.3 | 6378 | Session/token cache, pub/sub, TLS enabled |
+| Bastion (gamma-bastion) | 10.10.2.2 | 22 | SSH via IAP tunnel only |
+
+### IP Addresses
+
+| Name | IP | Purpose |
+|---|---|---|
+| gamma-lb-ip | 34.54.83.204 (global) | External LB frontend, Cloudflare A record target |
+| gamma-nat-ip-1 | 34.150.236.79 (us-east4) | Cloud NAT egress, use for upstream IP whitelisting |
+
+### VPC CIDR Plan
+
+| Range | Purpose | Notes |
+|---|---|---|
+| 10.10.0.0/24 | sn-app (Cloud Run) | Direct VPC Egress |
+| 10.10.1.0/24 | sn-data (reserved) | Future data tier workloads |
+| 10.10.2.0/28 | sn-mgmt (bastion) | 16 IPs, management only |
+| 10.20.0.0/16 | Private Service Access | Google-managed peering for Cloud SQL + Memorystore |
+
+Non-overlapping ranges chosen to support future VPC peering with other projects.

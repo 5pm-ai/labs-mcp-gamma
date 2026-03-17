@@ -1,10 +1,75 @@
 # Infrastructure & Assets Register
 
+## GCP Project: `ai-5pm-labs`
+
+| Name/ID | Type | Purpose | Location/Path | Lifecycle | Owner | Date | Notes |
+|---|---|---|---|---|---|---|---|
+| gamma-vpc | VPC | Isolated custom-mode VPC | us-east4, GCP | persistent | braun | 2026-03-17 | Custom subnet mode, no default routes except PGA |
+| sn-app | Subnet | Cloud Run Direct VPC Egress | us-east4, 10.10.0.0/24 | persistent | braun | 2026-03-17 | PGA enabled |
+| sn-data | Subnet | Data tier (reserved) | us-east4, 10.10.1.0/24 | persistent | braun | 2026-03-17 | PGA enabled |
+| sn-mgmt | Subnet | Bastion / management | us-east4, 10.10.2.0/28 | persistent | braun | 2026-03-17 | PGA enabled |
+| google-managed-services | PSA range | Cloud SQL / Redis private peering | 10.20.0.0/16, GCP | persistent | braun | 2026-03-17 | Managed by Google, do not overlap with VPC peering targets |
+| gamma-router | Cloud Router | BGP control plane for NAT | us-east4 | persistent | braun | 2026-03-17 | |
+| gamma-nat | Cloud NAT | Outbound internet for private resources | us-east4 | persistent | braun | 2026-03-17 | Covers sn-app, sn-mgmt |
+| gamma-nat-ip-1 | Static IP | NAT egress IP for upstream whitelisting | 34.150.236.79, us-east4 | persistent | braun | 2026-03-17 | Use for upstream IP allowlisting |
+| gamma-lb-ip | Static IP | External LB frontend | 34.54.83.204, global | persistent | braun | 2026-03-17 | Cloudflare A record target |
+| gamma-pg | Cloud SQL | PostgreSQL 16 (Enterprise, db-f1-micro) | us-east4, private IP 10.20.0.3 | persistent | braun | 2026-03-17 | No public IP. DB: mcp. Users: postgres, mcp_app |
+| gamma-redis | Memorystore | Redis 7.2 (Basic, 1GB) | us-east4, private IP 10.20.1.3:6378 | persistent | braun | 2026-03-17 | TLS in-transit encryption enabled. No public IP. |
+| gamma-bastion | Compute Engine | Bastion host (e2-micro, Debian 12) | us-east4-a, 10.10.2.2 | persistent | braun | 2026-03-17 | No public IP. IAP SSH only. SA: sa-bastion |
+| gamma-docker | Artifact Registry | Docker image repository | us-east4 | persistent | braun | 2026-03-17 | IAM-gated, no public access |
+| gamma-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-03-17 | Ingress: internal-and-cloud-load-balancing. SA: sa-mcp-server |
+| db-migrate | Cloud Run Job | Database schema init / migrations | us-east4 | persistent | braun | 2026-03-17 | On-demand: `gcloud run jobs execute db-migrate` SA: sa-db-admin |
+| gamma-5pm-ai-origin | SSL Certificate | Cloudflare Origin CA (self-managed) | global, GCP | persistent | braun | 2026-03-17 | Wildcard *.5pm.ai, expires 2040-06-06 |
+| gamma-mcp-neg | Serverless NEG | Cloud Run -> LB bridge | us-east4 | persistent | braun | 2026-03-17 | Points to gamma-mcp Cloud Run service |
+| gamma-mcp-backend | Backend Service | LB backend | global | persistent | braun | 2026-03-17 | EXTERNAL_MANAGED scheme |
+| gamma-mcp-urlmap | URL Map | HTTPS routing | global | persistent | braun | 2026-03-17 | Default route to gamma-mcp-backend |
+| gamma-mcp-http-redirect | URL Map | HTTP->HTTPS redirect | global | persistent | braun | 2026-03-17 | 301 redirect |
+
+## Service Accounts
+
+| SA | Purpose | Key Roles |
+|---|---|---|
+| sa-mcp-server@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run MCP server | cloudsql.client, secretmanager.secretAccessor, redis.editor, artifactregistry.reader |
+| sa-db-admin@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run Job (migrations) | cloudsql.client, secretmanager.secretAccessor, artifactregistry.reader |
+| sa-bastion@ai-5pm-labs.iam.gserviceaccount.com | Bastion VM | compute.osLogin, artifactregistry.reader |
+| sa-egress@ai-5pm-labs.iam.gserviceaccount.com | Internet egress identity | (minimal, attach to workloads needing internet) |
+
+## Firewall Rules
+
+| Rule | Direction | Priority | Allow/Deny | Source/Dest | Target |
+|---|---|---|---|---|---|
+| gamma-deny-all-ingress | INGRESS | 65534 | DENY all | 0.0.0.0/0 | all |
+| gamma-deny-all-egress | EGRESS | 65534 | DENY all | 0.0.0.0/0 | all |
+| gamma-allow-iap-ssh | INGRESS | 1000 | ALLOW tcp:22 | 35.235.240.0/20 | tag: allow-iap |
+| gamma-allow-internal | INGRESS | 1000 | ALLOW all | 10.10.0.0/16, 10.20.0.0/16 | all |
+| gamma-allow-egress-internal | EGRESS | 1000 | ALLOW all | 10.10.0.0/16, 10.20.0.0/16 | all |
+| gamma-allow-health-checks | INGRESS | 1000 | ALLOW tcp | 35.191.0.0/16, 130.211.0.0/22 | tag: allow-hc |
+| gamma-allow-egress-internet | EGRESS | 1000 | ALLOW all | 0.0.0.0/0 | tag: allow-internet-egress |
+| gamma-allow-egress-google-apis | EGRESS | 900 | ALLOW tcp:443 | 199.36.153.8/30 | all |
+
+## Secrets (Secret Manager)
+
+| Secret | Purpose | Notes |
+|---|---|---|
+| auth0-client-secret | Auth0 OIDC client secret | Rotate via Auth0 dashboard + update secret version |
+| database-url | Postgres connection string (mcp_app) | sslmode=no-verify, private IP |
+| database-admin-url | Postgres connection string (postgres) | Used by db-migrate job only |
+| redis-tls-ca | Memorystore Redis server CA cert | Required for TLS connections |
+
+## Local Dev Infrastructure
+
 | Name/ID | Type | Purpose | Location/Path | Lifecycle | Owner | Date | Notes |
 |---|---|---|---|---|---|---|---|
 | redis (docker) | container | Session cache, pub/sub, ephemeral auth data | localhost:6379 | temp | dev | 2026-03-17 | `docker compose up -d` |
 | postgres (docker) | container | Durable client registration, user identity | localhost:5433 | persistent | dev | 2026-03-17 | Volume: postgres-data |
 | db/init.sql | schema | Postgres schema init (roles, tables, RLS) | db/init.sql | persistent | dev | 2026-03-17 | Auto-applied on first container start |
-| Auth0 Action | action | Account Linking by Email | ai-5pm-labs.us.auth0.com | persistent | dev | 2026-03-17 | ID: 0bdb3e24-9c4a-4224-9414-bb000598fff2. Needs deployment. |
-| Auth0 App (MCP Server) | application | Regular Web App for OIDC upstream | ai-5pm-labs.us.auth0.com | persistent | dev | 2026-03-17 | client_id: CDMzP2gS1aCz84Fy4GiAF22SB4WQmp3I |
-| Auth0 App (M2M) | application | M2M for Account Linking Action | ai-5pm-labs.us.auth0.com | persistent | dev | 2026-03-17 | client_id: uviokzty2SoteJN7mW5OTiZ4vcsRWQ5l. Needs client grant. |
+
+## External Services
+
+| Name/ID | Type | Purpose | Location | Lifecycle | Owner | Date | Notes |
+|---|---|---|---|---|---|---|---|
+| Auth0 App (MCP Server) | application | Regular Web App for OIDC upstream | ai-5pm-labs.us.auth0.com | persistent | braun | 2026-03-17 | client_id: CDMzP2gS1aCz84Fy4GiAF22SB4WQmp3I |
+| Auth0 App (M2M) | application | M2M for Account Linking Action | ai-5pm-labs.us.auth0.com | persistent | braun | 2026-03-17 | client_id: uviokzty2SoteJN7mW5OTiZ4vcsRWQ5l |
+| Auth0 Action | action | Account Linking by Email | ai-5pm-labs.us.auth0.com | persistent | braun | 2026-03-17 | ID: 0bdb3e24-9c4a-4224-9414-bb000598fff2 |
+| Cloudflare DNS | DNS | gamma.5pm.ai A record (proxied) | Cloudflare 5pm.ai zone | persistent | braun | 2026-03-17 | A record -> 34.54.83.204, SSL/TLS: Full |
+| Cloudflare Origin CA | certificate | TLS between Cloudflare and GCP LB | .cloudflare/ (gitignored) | persistent | braun | 2026-03-17 | Wildcard *.5pm.ai, expires 2040-06-06 |

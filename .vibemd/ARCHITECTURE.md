@@ -67,3 +67,44 @@ MCP Clients (Cursor, Claude Code, Codex)
 
 - **Postgres**: Client registrations, user identity, teams (durable, queryable, RLS-ready)
 - **Redis**: Auth flow state, tokens, sessions, pub/sub (ephemeral, fast, TTL-based)
+
+## Production Deployment (GCP us-east4)
+
+```
+MCP Clients (Cursor, Claude Code, Codex)
+    |
+    |  HTTPS (Cloudflare edge cert)
+    v
+Cloudflare CDN/Proxy  (gamma.5pm.ai)
+    |
+    |  HTTPS (Origin CA cert, Full SSL)
+    v
+GCP Global External Application LB  (34.54.83.204)
+    |  HTTP :80 -> 301 HTTPS redirect
+    |  HTTPS :443 -> serverless NEG
+    v
+Cloud Run (gamma-mcp)
+    |  ingress: internal-and-cloud-load-balancing
+    |  Direct VPC Egress (sn-app, 10.10.0.0/24)
+    |
+    +---> Memorystore Redis (10.20.1.3:6378, TLS)
+    +---> Cloud SQL Postgres (10.20.0.3:5432, SSL)
+    +---> Auth0 (via Cloud NAT, static IP 34.150.236.79)
+
+Cloud Run Job (db-migrate)
+    |  Direct VPC Egress (sn-app)
+    +---> Cloud SQL Postgres (admin connection)
+
+Bastion (10.10.2.2, sn-mgmt)
+    |  IAP TCP tunnel only, no public IP
+    +---> SSH via gcloud compute ssh --tunnel-through-iap
+```
+
+### Key Design Decisions
+
+- **No public IPs** on any workload, database, or cache instance
+- **Deny-all-by-default** firewall with explicit allow rules per purpose
+- **Cloudflare Origin CA** avoids Google-managed cert provisioning issues with CF proxy
+- **Direct VPC Egress** over VPC Connectors — lower latency, lower cost, GA since 2024
+- **Cloud NAT with static IP** enables upstream IP whitelisting
+- **VPC peering-ready** — custom-mode VPC with non-overlapping CIDRs (10.10.x.x for subnets, 10.20.x.x for PSA)
