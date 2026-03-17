@@ -25,7 +25,8 @@ Two-layer OAuth 2.1 architecture:
 - All tables have `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`
 - Two Postgres roles: `mcp_admin` (table owner, bypasses RLS), `mcp_app` (application, RLS enforced)
 - Query wrapper `withUserContext(userId, fn)` sets `SET LOCAL app.user_id` per transaction
-- RLS policies not yet defined — tables are accessible but the plumbing is ready
+- **Current state**: Permissive `allow_all` default policies in `db/init.sql` grant `mcp_app` full access on all tables (`FOR ALL ... USING (true) WITH CHECK (true)`). These act as a structural placeholder until real user-scoped policies are added.
+- **Warning**: `FORCE ROW LEVEL SECURITY` with zero policies denies all operations — even to role with table grants. Default permissive policies must exist before any query can succeed. Do not remove them without simultaneously adding replacement policies.
 
 ## Canonical User Identity
 
