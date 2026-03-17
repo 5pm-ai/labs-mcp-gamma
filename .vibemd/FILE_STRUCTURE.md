@@ -1,0 +1,128 @@
+# File Structure
+
+## Root
+
+| Path | Purpose |
+|---|---|
+| `docker-compose.yml` | Local dev infrastructure (Redis + Postgres) |
+| `db/init.sql` | Postgres schema init — roles, tables, RLS setup |
+| `package.json` | Node.js dependencies and scripts |
+| `tsconfig.json` | TypeScript compiler config |
+| `jest.config.js` | Jest test runner config (ESM mode) |
+| `vite.config.ts` | Vite bundler config for MCP app HTML assets |
+| `eslint.config.mjs` | ESLint config |
+| `.env.example` | Example environment variables (no secrets) |
+| `CLAUDE.md` | Workspace rules for AI agents |
+
+## `.vibemd/`
+
+Living documentation maintained alongside code.
+
+| File | Purpose |
+|---|---|
+| `RULES.md` | Commit discipline, file structure rules, execution discipline |
+| `ARCHITECTURE.md` | System-level blueprint and component topology |
+| `DATA_MODEL.md` | Postgres schema, Redis key structure |
+| `FILE_STRUCTURE.md` | This file |
+| `INFRASTRUCTURE.md` | Assets register (containers, Auth0 resources) |
+| `INTEGRATIONS.md` | External system setup and auth config |
+| `LESSONS_LEARNED.md` | Multi-session debugging log |
+| `NETWORK.md` | Endpoints, ports, external service URLs |
+| `PRD.md` | Product requirements |
+| `PROMPTS.md` | Reusable prompt templates |
+| `SECURITY.md` | Auth strategy, RLS, token management, race conditions |
+| `TECH_STACK.md` | Approved technologies and versions |
+
+## `src/`
+
+### Entry Point
+
+| File | Purpose |
+|---|---|
+| `src/index.ts` | Server startup — connects Redis/Postgres, mounts all modules |
+| `src/config.ts` | Config singleton loaded from env vars (auth, auth0, redis, database) |
+
+### `src/interfaces/`
+
+| File | Purpose |
+|---|---|
+| `auth-validator.ts` | `ITokenValidator` interface + `InternalTokenValidator` + `ExternalTokenValidator` |
+
+### `src/modules/auth/`
+
+OAuth 2.1 authorization server module. Runs in-process (internal) or standalone (auth_server). Architecturally separate from MCP.
+
+| File | Purpose |
+|---|---|
+| `index.ts` | `AuthModule` — Express router with all OAuth endpoints, introspection |
+| `types.ts` | `McpInstallation`, `Auth0Installation`, `PendingAuthorization`, `TokenExchange` |
+| `auth/auth-core.ts` | PKCE, token generation, AES-256-CBC encryption |
+| `auth/provider.ts` | `FeatureReferenceAuthProvider` (OAuthServerProvider impl), `FeatureReferenceOAuthClientsStore` |
+| `auth/provider.test.ts` | Unit tests for provider |
+| `handlers/auth0-callback.ts` | Auth0 OIDC callback — exchanges code, upserts user in Postgres, issues MCP tokens |
+| `services/auth.ts` | Unified service facade — routes client reg to Postgres (if ready), ephemeral data to Redis |
+| `services/auth.test.ts` | Unit tests for auth service |
+| `services/redis-auth.ts` | Redis-backed auth storage (pending auth, token exchange, installations, refresh tokens) |
+| `services/pg-auth.ts` | Postgres-backed client registration with dedup via `(client_name, redirect_uris_hash)` |
+| `static/mcp.png` | MCP logo served on auth pages |
+
+### `src/modules/mcp/`
+
+MCP protocol module. Transport-agnostic, depends only on `ITokenValidator`.
+
+| File | Purpose |
+|---|---|
+| `index.ts` | `MCPModule` — Express router for `/mcp`, `/sse`, `/message` |
+| `types.ts` | Shared MCP types |
+| `handlers/shttp.ts` | Streamable HTTP transport handler |
+| `handlers/shttp.test.ts` | Unit tests for SHTTP handler |
+| `handlers/shttp.integration.test.ts` | Integration tests for SHTTP |
+| `handlers/sse.ts` | Legacy SSE transport handler |
+| `services/mcp.ts` | MCP server instance (tools, resources, prompts) |
+| `services/redisTransport.ts` | `ServerRedisTransport` — pub/sub relay for SHTTP sessions |
+| `services/redisTransport.test.ts` | Unit tests |
+| `services/redisTransport.integration.test.ts` | Integration tests |
+
+### `src/modules/shared/`
+
+| File | Purpose |
+|---|---|
+| `redis.ts` | `RedisClientImpl`, `MockRedisClient`, `RedisClient` interface |
+| `postgres.ts` | `pg` Pool, `initPostgres()`, `withUserContext()` RLS wrapper, `isPostgresReady()` |
+| `logger.ts` | Structured JSON logger with Express middleware |
+
+### `src/modules/example-apps/`
+
+| File | Purpose |
+|---|---|
+| `index.ts` | `ExampleAppsModule` — mounts example MCP app servers at `/:slug/mcp` |
+
+### `src/apps/`
+
+| File | Purpose |
+|---|---|
+| `hello-world/App.tsx` | React component for Hello World MCP app |
+| `hello-world/mcp-app.html` | Bundled single-file MCP app HTML |
+
+### `src/static/`
+
+| File | Purpose |
+|---|---|
+| `index.html` | Server splash page |
+| `styles.css` | Splash page styles |
+| `mcp.png` | MCP logo |
+
+## `scripts/`
+
+| File | Purpose |
+|---|---|
+| `test-e2e-all.sh` | Run all e2e test suites |
+| `test-e2e-internal.sh` | e2e tests for internal auth mode |
+| `test-e2e-external.sh` | e2e tests for external auth mode |
+
+## `docs/`
+
+| File | Purpose |
+|---|---|
+| `oauth-implementation.md` | OAuth implementation notes |
+| `session-ownership.md` | Session ownership design notes |
