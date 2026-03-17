@@ -21,7 +21,9 @@ import { AuthModule } from './modules/auth/index.js';
 import { MCPModule } from './modules/mcp/index.js';
 import { ExampleAppsModule, AVAILABLE_EXAMPLES } from './modules/example-apps/index.js';
 import { ExternalTokenValidator, InternalTokenValidator, ITokenValidator } from './interfaces/auth-validator.js';
+import { mcpAuthMetadataRouter, createOAuthMetadata } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { redisClient } from './modules/shared/redis.js';
+import { initPostgres } from './modules/shared/postgres.js';
 import { logger } from './modules/shared/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -66,36 +68,18 @@ async function main() {
     }
   }
 
-  // OAuth metadata discovery endpoint
-  // Only served by MCP servers (not standalone auth servers)
-  if (config.auth.mode !== 'auth_server') {
-    app.get('/.well-known/oauth-authorization-server', (req, res) => {
-      // Log the metadata discovery request
-      logger.info('OAuth metadata discovery', {
-        userAgent: req.get('user-agent'),
-        authMode: config.auth.mode,
-        ip: req.ip
-      });
-
-      // Determine the auth server URL based on mode
-      const authServerUrl = config.auth.mode === 'internal'
-        ? config.baseUri  // Internal mode: auth is in same process
-        : config.auth.externalUrl!;  // External mode: separate auth server
-
-      res.json({
-        issuer: authServerUrl,
-        authorization_endpoint: `${authServerUrl}/authorize`,
-        token_endpoint: `${authServerUrl}/token`,
-        registration_endpoint: `${authServerUrl}/register`,
-        introspection_endpoint: `${authServerUrl}/introspect`,
-        revocation_endpoint: `${authServerUrl}/revoke`,
-        token_endpoint_auth_methods_supported: ['none'],
-        response_types_supported: ['code'],
-        grant_types_supported: ['authorization_code', 'refresh_token'],
-        code_challenge_methods_supported: ['S256'],
-        service_documentation: 'https://modelcontextprotocol.io'
-      });
-    });
+  // Connect to Postgres if configured
+  if (config.database.enabled && config.database.url) {
+    try {
+      await initPostgres(config.database.url);
+      console.log('Connected to Postgres');
+    } catch (error) {
+      logger.error('Failed to connect to Postgres', error as Error);
+      if (config.nodeEnv === 'production') {
+        process.exit(1);
+      }
+      console.log('WARNING: Continuing without Postgres (development mode)');
+    }
   }
 
   // Initialize modules based on auth mode
@@ -149,6 +133,27 @@ async function main() {
   }
 
   // ========================================
+  // OAuth Metadata (RFC 9728 + RFC 8414) - served in all MCP modes
+  // ========================================
+  if (config.auth.mode !== 'auth_server') {
+    const authServerUrl = config.auth.mode === 'internal'
+      ? config.baseUri
+      : config.auth.externalUrl!;
+
+    const oauthMetadata = createOAuthMetadata({
+      issuerUrl: new URL(authServerUrl),
+      provider: new (await import('./modules/auth/auth/provider.js')).FeatureReferenceAuthProvider(),
+      serviceDocumentationUrl: new URL('https://modelcontextprotocol.io'),
+    });
+
+    app.use(mcpAuthMetadataRouter({
+      oauthMetadata,
+      resourceServerUrl: new URL(config.baseUri),
+      serviceDocumentationUrl: new URL('https://modelcontextprotocol.io'),
+    }));
+  }
+
+  // ========================================
   // MCP Module (skip for standalone auth server)
   // ========================================
   if (config.auth.mode !== 'auth_server') {
@@ -177,7 +182,8 @@ async function main() {
     console.log('MCP Endpoints:');
     console.log(`   Streamable HTTP: ${config.baseUri}/mcp`);
     console.log(`   SSE (legacy): ${config.baseUri}/sse`);
-    console.log(`   OAuth Metadata: ${config.baseUri}/.well-known/oauth-authorization-server`);
+    console.log(`   Protected Resource Metadata: ${config.baseUri}/.well-known/oauth-protected-resource`);
+    console.log(`   Auth Server Metadata: ${config.baseUri}/.well-known/oauth-authorization-server`);
     console.log('');
     console.log('MCP App Example Servers:');
     for (const slug of AVAILABLE_EXAMPLES) {
