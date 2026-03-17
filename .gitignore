@@ -132,3 +132,5 @@ dist
 
 # Claude config directory
 .claude/
+
+.cloudflare/

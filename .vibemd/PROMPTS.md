@@ -23,3 +23,34 @@ you must follow the rules in `.vibemd/RULES.md`.
 no code, just high level.
 
 ************************************************************************
+
+@.vibemd what would it take to support the following, is it possible:
+
+```
+you have local gcloud cli it's logged in and project set to `ai-5pm-labs`.
+
+we use cloudflare dns, with proxy enabled orange entries. we can't change the SSL/TLS encryption at this point it's currently ```
+
+SSL/TLS encryption
+Current encryption mode: Full
+
+Full: Enable encryption end-to-end. Use this mode when your origin server supports SSL certification but does not use a valid, publicly trusted certificate.
+
+```
+
+this is intended to be served from `https://gamma.5pm.ai`
+
+must be compatible with production version of the application. focus on Streamable HTTP (SHTTP) transport.
+
+need to deploy to gcp to a us-east region closest to boston, ma. use a new and isolated vpc (you can delete the default one) that's locked down (e.g., firewall deny all ingress egress default, take out rdp), defense-in-depth, in future we will want to support this vpc can connect to another vpc in another project from the same gcp. redis/pg/cloudrun/etc must not have public ips, must not be exposed externally. leverage service accounts for roles/permissions/etc. enable the ssh thing i think it's iap and/or pga i should be able to ssh to bastion so you'll need to also spin up a small vm for it give it's own sa for example. use cloud nat and cloud router and negs and backends etc we'll need to support internal egress with or without static ips for possible upstream whitelisting, and also we need external load balancer such that we also want to support ingress to private services. finally another sa that can be used and attached so internal vms/runs/etc can egress to internet.
+```
+
+---
+
+to research use the internet, use the context7 mcp, whatever you need to research so we can prove the plan.
+
+you must follow the rules in `.vibemd/RULES.md`.
+
+no code, just high level.
+
+************************************************************************
