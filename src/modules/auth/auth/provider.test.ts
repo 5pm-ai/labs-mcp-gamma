@@ -8,6 +8,12 @@ import { McpInstallation, PendingAuthorization, TokenExchange } from "../types.j
 import { FeatureReferenceAuthProvider, FeatureReferenceOAuthClientsStore } from "./provider.js";
 import * as authService from "../services/auth.js";
 
+// Force Redis-only mode in tests (no Postgres) and provide required Auth0 env vars
+process.env.DATABASE_URL = '';
+process.env.AUTH0_DOMAIN = 'ai-5pm-labs.us.auth0.com';
+process.env.AUTH0_CLIENT_ID = 'test-client-id';
+process.env.AUTH0_CLIENT_SECRET = 'test-client-secret';
+
 // Helper function to create sample client
 function createTestClient(): OAuthClientInformationFull {
   return {
@@ -33,7 +39,6 @@ function createMockResponse() {
 
 function getMockAuthValues() {
   const client = createTestClient();
-  // Use properly generated tokens for encryption
   const accessToken = authService.generateToken();
   const newTokens: OAuthTokens = {
     access_token: authService.generateToken(),
@@ -42,9 +47,10 @@ function getMockAuthValues() {
     expires_in: 3600,
   };
   const mcpInstallation: McpInstallation = {
-    mockUpstreamInstallation: {
-      mockUpstreamAccessToken: "fake-upstream-access-token",
-      mockUpstreamRefreshToken: "fake-upstream-refresh-token",
+    auth0Installation: {
+      auth0AccessToken: "fake-auth0-access-token",
+      auth0IdToken: "fake-auth0-id-token",
+      auth0Sub: "auth0|test123",
     },
     mcpTokens: {
       access_token: accessToken,
@@ -122,9 +128,8 @@ describe("FeatureReferenceAuthProvider", () => {
   });
   
   describe("authorize", () => {
-    it("saves pending authorization and sends HTML response", async () => {
+    it("saves pending authorization and redirects to Auth0", async () => {
       const client = createTestClient();
-      // Use a type assertion to make TypeScript ignore the mismatch
       const params = {
         redirectUri: "https://example.com/callback",
         codeChallenge: "test-challenge",
@@ -134,12 +139,13 @@ describe("FeatureReferenceAuthProvider", () => {
       
       await provider.authorize(client, params, res);
       
-      // Verify HTML sent with redirect
-      expect(res.send).toHaveBeenCalled();
-      const sentHtml = (res.send as jest.Mock).mock.calls[0][0];
-      expect(sentHtml).toContain('MCP Server Authorization');
-      expect(sentHtml).toContain('Authorization Required');
-      expect(sentHtml).toContain('mock-upstream-idp/authorize?redirect_uri=/mock-upstream-idp/callback&state=');
+      expect(res.redirect).toHaveBeenCalledWith(
+        expect.stringContaining('ai-5pm-labs.us.auth0.com/authorize')
+      );
+      const redirectUrl = (res.redirect as jest.Mock).mock.calls[0][0] as string;
+      expect(redirectUrl).toContain('response_type=code');
+      expect(redirectUrl).toContain('scope=openid+profile+email');
+      expect(redirectUrl).toContain('redirect_uri=');
     });
   });
   
@@ -271,9 +277,10 @@ describe("FeatureReferenceAuthProvider", () => {
       const refreshToken = authService.generateToken();
       
       const mcpInstallation: McpInstallation = {
-        mockUpstreamInstallation: {
-          mockUpstreamAccessToken: "fake-upstream-access-token",
-          mockUpstreamRefreshToken: "fake-upstream-refresh-token",
+        auth0Installation: {
+          auth0AccessToken: "fake-auth0-access-token",
+          auth0IdToken: "fake-auth0-id-token",
+          auth0Sub: "auth0|test123",
         },
         mcpTokens: {
           access_token: accessToken,
@@ -307,9 +314,10 @@ describe("FeatureReferenceAuthProvider", () => {
     it("returns auth info for valid token", async () => {
       const accessToken = authService.generateToken();
       const mcpInstallation: McpInstallation = {
-        mockUpstreamInstallation: {
-          mockUpstreamAccessToken: "fake-upstream-access-token",
-          mockUpstreamRefreshToken: "fake-upstream-refresh-token",
+        auth0Installation: {
+          auth0AccessToken: "fake-auth0-access-token",
+          auth0IdToken: "fake-auth0-id-token",
+          auth0Sub: "auth0|test123",
         },
         mcpTokens: {
           access_token: accessToken,
@@ -348,9 +356,10 @@ describe("FeatureReferenceAuthProvider", () => {
       const twoDaysAgoInSeconds = Math.floor(Date.now() / 1000) - (2 * oneDayInSeconds);
       
       const mcpInstallation: McpInstallation = {
-        mockUpstreamInstallation: {
-          mockUpstreamAccessToken: "fake-upstream-access-token",
-          mockUpstreamRefreshToken: "fake-upstream-refresh-token",
+        auth0Installation: {
+          auth0AccessToken: "fake-auth0-access-token",
+          auth0IdToken: "fake-auth0-id-token",
+          auth0Sub: "auth0|test123",
         },
         mcpTokens: {
           access_token: accessToken,
@@ -375,9 +384,10 @@ describe("FeatureReferenceAuthProvider", () => {
       const client = createTestClient();
       const accessToken = authService.generateToken();
       const mcpInstallation: McpInstallation = {
-        mockUpstreamInstallation: {
-          mockUpstreamAccessToken: "fake-upstream-access-token",
-          mockUpstreamRefreshToken: "fake-upstream-refresh-token",
+        auth0Installation: {
+          auth0AccessToken: "fake-auth0-access-token",
+          auth0IdToken: "fake-auth0-id-token",
+          auth0Sub: "auth0|test123",
         },
         mcpTokens: {
           access_token: accessToken,

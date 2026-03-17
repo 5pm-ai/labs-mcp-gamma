@@ -1,5 +1,11 @@
 import { jest } from '@jest/globals';
 import crypto from "crypto";
+
+// Force Redis-only mode in tests (no Postgres) and provide required Auth0 env vars
+process.env.DATABASE_URL = '';
+process.env.AUTH0_DOMAIN = 'test.us.auth0.com';
+process.env.AUTH0_CLIENT_ID = 'test-client-id';
+process.env.AUTH0_CLIENT_SECRET = 'test-client-secret';
 import {
   decryptString,
   exchangeToken,
@@ -182,9 +188,10 @@ describe("auth utils", () => {
       const accessToken = generateToken();
 
       const mcpInstallation: McpInstallation = {
-        mockUpstreamInstallation: {
-          mockUpstreamAccessToken: "fake-upstream-access-token",
-          mockUpstreamRefreshToken: "fake-upstream-refresh-token",
+        auth0Installation: {
+          auth0AccessToken: "fake-auth0-access-token",
+          auth0IdToken: "fake-auth0-id-token",
+          auth0Sub: "auth0|test123",
         },
         mcpTokens: {
           access_token: accessToken,
@@ -229,9 +236,10 @@ describe("auth utils", () => {
       
       // Save it to Redis with actual function
       await saveMcpInstallation(accessToken, {
-        mockUpstreamInstallation: {
-          mockUpstreamAccessToken: "fake-upstream-access-token",
-          mockUpstreamRefreshToken: "fake-upstream-refresh-token",
+        auth0Installation: {
+          auth0AccessToken: "fake-auth0-access-token",
+          auth0IdToken: "fake-auth0-id-token",
+          auth0Sub: "auth0|test123",
         },
         mcpTokens: {
           access_token: accessToken,
@@ -244,8 +252,6 @@ describe("auth utils", () => {
       });
       
       const getDel = jest.spyOn(mockRedis, 'getDel').mockImplementationOnce(() => {
-        // Need to return encrypted data for successful decryption in the revoke function
-        // Create encrypted data using our access token
         const mcpInstallation = {
           mcpTokens: {
             access_token: accessToken,
