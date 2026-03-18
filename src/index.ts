@@ -37,7 +37,7 @@ function formatServerName(slug: string): string {
 async function main() {
   // Determine server type based on auth mode
   const isAuthServerOnly = config.auth.mode === 'auth_server';
-  const serverType = isAuthServerOnly ? 'OAuth Authorization Server' : 'MCP Feature Reference Server';
+  const serverType = isAuthServerOnly ? 'OAuth Authorization Server' : '5pm MCP Server';
 
   console.log('');
   console.log('========================================');
@@ -209,33 +209,40 @@ async function main() {
         <!DOCTYPE html>
         <html>
           <head>
-            <title>OAuth Authorization Server</title>
+            <title>5pm OAuth Authorization Server</title>
             <style>
               body {
-                font-family: system-ui, sans-serif;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 max-width: 800px;
                 margin: 50px auto;
                 padding: 20px;
+                background: #111111;
+                color: #fefefe;
               }
-              h1 { color: #333; }
+              h1 { color: #d89998; }
+              h2 { color: #fefefe; margin-top: 2rem; }
+              p { color: #888888; }
               .endpoint {
-                background: #f5f5f5;
-                padding: 10px;
-                margin: 5px 0;
-                font-family: monospace;
+                background: #1a1a1a;
+                border: 1px solid #2a2a2a;
+                border-radius: 6px;
+                padding: 10px 14px;
+                margin: 8px 0;
+                font-family: 'SF Mono', 'Courier New', monospace;
+                font-size: 0.9rem;
               }
             </style>
           </head>
           <body>
-            <h1>OAuth Authorization Server</h1>
-            <p>This is a demo standalone OAuth 2.0 authorization server for MCP.</p>
+            <h1>5pm OAuth Authorization Server</h1>
+            <p>Standalone OAuth 2.0 authorization server for MCP.</p>
 
             <h2>Available Endpoints</h2>
-            <div class="endpoint">POST ${config.baseUri}/register - Register OAuth client</div>
-            <div class="endpoint">GET ${config.baseUri}/authorize - Authorization endpoint</div>
-            <div class="endpoint">POST ${config.baseUri}/token - Token endpoint</div>
-            <div class="endpoint">POST ${config.baseUri}/introspect - Token introspection</div>
-            <div class="endpoint">POST ${config.baseUri}/revoke - Token revocation</div>
+            <div class="endpoint">POST ${config.baseUri}/register — Register OAuth client</div>
+            <div class="endpoint">GET ${config.baseUri}/authorize — Authorization endpoint</div>
+            <div class="endpoint">POST ${config.baseUri}/token — Token endpoint</div>
+            <div class="endpoint">POST ${config.baseUri}/introspect — Token introspection</div>
+            <div class="endpoint">POST ${config.baseUri}/revoke — Token revocation</div>
           </body>
         </html>
       `);
