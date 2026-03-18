@@ -201,6 +201,12 @@ async function main() {
     legacyHeaders: false,
   });
 
+  // Favicon (environment-aware: local vs production)
+  app.get('/favicon.ico', splashPageLimiter, (req, res) => {
+    const filename = config.nodeEnv === 'production' ? 'favicon-prod.ico' : 'favicon-local.ico';
+    res.sendFile(path.join(__dirname, 'static', filename));
+  });
+
   // Splash page (customize based on mode)
   app.get('/', splashPageLimiter, (req, res) => {
     if (config.auth.mode === 'auth_server') {
@@ -210,6 +216,7 @@ async function main() {
         <html>
           <head>
             <title>5pm OAuth Authorization Server</title>
+            <link rel="icon" href="/favicon.ico" type="image/x-icon">
             <style>
               body {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

@@ -111,6 +111,11 @@ MCP protocol module. Transport-agnostic, depends only on `ITokenValidator`.
 | `index.html` | Server splash page |
 | `styles.css` | Splash page styles |
 | `mcp.png` | MCP logo |
+| `favicon-local.ico` | Favicon served in development (`NODE_ENV != production`) |
+| `favicon-local.png` | Local favicon (PNG variant) |
+| `favicon-prod.ico` | Favicon served in production (`NODE_ENV=production`) |
+| `favicon-prod.png` | Production favicon (PNG variant) |
+| `favicon-dev.png` | Dev favicon asset |
 
 ## `scripts/`
 

@@ -40,6 +40,7 @@ Cloud Run (gamma-mcp, ingress: internal-and-cloud-load-balancing)
 | POST | `/message` | Legacy SSE message endpoint |
 | GET | `/.well-known/oauth-protected-resource` | Protected Resource Metadata (RFC 9728) |
 | GET | `/.well-known/oauth-authorization-server` | Authorization Server Metadata (RFC 8414) |
+| GET | `/favicon.ico` | Environment-aware favicon (local vs production) |
 | GET | `/{slug}/mcp` | Example MCP App servers |
 
 ### External Services
