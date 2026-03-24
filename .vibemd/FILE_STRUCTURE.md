@@ -97,12 +97,26 @@ MCP protocol module. Transport-agnostic, depends only on `ITokenValidator`.
 |---|---|
 | `index.ts` | `ExampleAppsModule` — mounts example MCP app servers at `/:slug/mcp` |
 
+### `src/modules/warehouse/`
+
+Multi-tenant warehouse query module. Strategy + registry pattern for connector extensibility.
+
+| File | Purpose |
+|---|---|
+| `types.ts` | `WarehouseConnector` interface, `WarehouseResult`, type enums, `ConnectorFactory` |
+| `registry.ts` | Map-based connector registry (no if/switch) |
+| `crypto.ts` | `envelopeDecrypt` — GCP KMS envelope decryption for warehouse credentials |
+| `service.ts` | `listWarehouses()`, `executeWarehouseQuery()` — orchestrator with RLS via `withUserContext` |
+| `connectors/bigquery.ts` | BigQuery connector (self-registers) |
+| `connectors/snowflake.ts` | Snowflake connector (self-registers) |
+| `connectors/clickhouse.ts` | ClickHouse connector (self-registers) |
+
 ### `src/apps/`
 
 | File | Purpose |
 |---|---|
-| `hello-world/App.tsx` | React component for Hello World MCP app |
-| `hello-world/mcp-app.html` | Bundled single-file MCP app HTML |
+| `warehouse/App.tsx` | React component for 5pm warehouse MCP app |
+| `warehouse/mcp-app.html` | Bundled single-file MCP app HTML |
 
 ### `src/static/`
 

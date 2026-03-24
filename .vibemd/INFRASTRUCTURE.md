@@ -17,7 +17,7 @@
 | gamma-redis | Memorystore | Redis 7.2 (Basic, 1GB) | us-east4, private IP 10.20.1.3:6378 | persistent | braun | 2026-03-17 | TLS in-transit encryption enabled. No public IP. |
 | gamma-bastion | Compute Engine | Bastion host (e2-micro, Debian 12) | us-east4-a, 10.10.2.2 | persistent | braun | 2026-03-17 | No public IP. IAP SSH only. SA: sa-bastion |
 | gamma-docker | Artifact Registry | Docker image repository | us-east4 | persistent | braun | 2026-03-17 | IAM-gated, no public access |
-| gamma-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-03-17 | Ingress: internal-and-cloud-load-balancing. SA: sa-mcp-server |
+| gamma-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-03-18 | Ingress: internal-and-cloud-load-balancing. SA: sa-mcp-server. Image: mcp-server:v4 |
 | db-migrate | Cloud Run Job | Database schema init / migrations | us-east4 | persistent | braun | 2026-03-17 | On-demand: `gcloud run jobs execute db-migrate` SA: sa-db-admin |
 | gamma-5pm-ai-origin | SSL Certificate | Cloudflare Origin CA (self-managed) | global, GCP | persistent | braun | 2026-03-17 | Wildcard *.5pm.ai, expires 2040-06-06 |
 | gamma-mcp-neg | Serverless NEG | Cloud Run -> LB bridge | us-east4 | persistent | braun | 2026-03-17 | Points to gamma-mcp Cloud Run service |
@@ -55,6 +55,12 @@
 | database-url | Postgres connection string (mcp_app) | sslmode=no-verify, private IP |
 | database-admin-url | Postgres connection string (postgres) | Used by db-migrate job only |
 | redis-tls-ca | Memorystore Redis server CA cert | Required for TLS connections |
+
+## Environment Variables (Cloud Run: gamma-mcp)
+
+| Var | Source | Purpose |
+|---|---|---|
+| KMS_KEY_NAME | Plain env var | GCP KMS key resource name for warehouse credential decryption |
 
 ## Local Dev Infrastructure
 
