@@ -134,3 +134,8 @@ dist
 .claude/
 
 .cloudflare/
+
+# Key material
+*.p8
+*.pub
+rsa_key*

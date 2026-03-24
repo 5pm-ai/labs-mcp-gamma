@@ -36,6 +36,11 @@ export interface Config {
     url?: string;
     adminUrl?: string;
   };
+
+  kms: {
+    enabled: boolean;
+    keyName?: string;
+  };
 }
 
 /**
@@ -80,6 +85,11 @@ function loadConfig(): Config {
       url: process.env.DATABASE_URL,
       adminUrl: process.env.DATABASE_ADMIN_URL,
     },
+
+    kms: {
+      enabled: !!process.env.KMS_KEY_NAME,
+      keyName: process.env.KMS_KEY_NAME,
+    },
   };
 }
 
@@ -96,4 +106,5 @@ if (config.auth.mode === 'external') {
 console.log('   Auth0 Domain:', config.auth0.domain);
 console.log('   Redis:', config.redis.enabled ? 'enabled' : 'disabled');
 console.log('   Database:', config.database.enabled ? 'enabled' : 'disabled');
+console.log('   KMS:', config.kms.enabled ? 'enabled' : 'disabled (warehouse tool unavailable)');
 console.log('');

@@ -47,10 +47,15 @@ export async function withUserContext<T>(
   userId: string,
   fn: (client: pg.PoolClient) => Promise<T>,
 ): Promise<T> {
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidPattern.test(userId)) {
+    throw new Error("withUserContext: invalid userId format");
+  }
+
   const client = await getPool().connect();
   try {
     await client.query('BEGIN');
-    await client.query("SET LOCAL app.user_id = $1", [userId]);
+    await client.query(`SET LOCAL app.user_id = '${userId}'`);
     const result = await fn(client);
     await client.query('COMMIT');
     return result;

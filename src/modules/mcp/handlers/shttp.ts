@@ -124,7 +124,7 @@ export async function handleStreamableHTTP(req: Request, res: Response) {
           userId
         });
         
-        const { server, cleanup: mcpCleanup } = createMcpServer();
+        const { server, cleanup: mcpCleanup } = createMcpServer(userId);
 
         const serverRedisTransport = new ServerRedisTransport(sessionId);
         serverRedisTransport.onclose = mcpCleanup;
