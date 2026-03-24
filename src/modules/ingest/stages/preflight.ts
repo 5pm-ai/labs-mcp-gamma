@@ -12,6 +12,7 @@ export async function runPreflight(
   warehouseConnector: WarehouseConnector,
   sinkConnector: SinkConnector,
   warehouseType: string,
+  embeddingDimensions: number,
   reporter: StageReporter,
 ): Promise<void> {
   const stageKey = "preflight";
@@ -33,7 +34,7 @@ export async function runPreflight(
   try {
     const testId = `__preflight_test_${Date.now()}`;
     await sinkConnector.upsert(
-      [{ id: testId, values: new Array(8).fill(0), metadata: { _preflight: true } }],
+      [{ id: testId, values: new Array(embeddingDimensions).fill(0), metadata: { _preflight: true } }],
     );
     await reporter.writeLog(stageKey, "info", "Sink write access confirmed");
   } catch (err) {

@@ -47,7 +47,7 @@ export async function runIngestPipeline(
 
   try {
     currentStageKey = "preflight";
-    await runPreflight(warehouseConnector, sinkConnector, warehouseType, reporter);
+    await runPreflight(warehouseConnector, sinkConnector, warehouseType, config.embeddingDimensions, reporter);
 
     currentStageKey = "crawl_schemas";
     const crawlResult = await runCrawl(warehouseConnector, reporter);
