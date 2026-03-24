@@ -180,6 +180,17 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
             },
           ],
         },
+        {
+          name: "sink_guide",
+          description: "Guide for querying vector stores via the sink tool",
+          arguments: [
+            {
+              name: "connectorId",
+              description: "Optional connector ID to get sink-specific guidance",
+              required: false,
+            },
+          ],
+        },
       ],
     };
   });
@@ -187,44 +198,72 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
   server.setRequestHandler(GetPromptRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
-    if (name !== "warehouse_guide") {
-      throw new Error(`Unknown prompt: ${name}`);
+    if (name === "warehouse_guide") {
+      const warehouses = await getWarehouses();
+
+      let guide: string;
+      if (warehouses.length === 0) {
+        guide = "No warehouse connectors are configured for your team. Ask your team admin to add one in the 5pm control plane.";
+      } else {
+        const connectorLines = warehouses.map(
+          (w) => `- ${w.name} (${SQL_DIALECT[w.type] || w.type}) — id: ${w.id} — status: ${w.status}`,
+        );
+
+        const targetId = args?.connectorId as string | undefined;
+        const target = targetId ? warehouses.find((w) => w.id === targetId) : undefined;
+        const dialectHint = target
+          ? `\n\nTarget connector "${target.name}" uses ${SQL_DIALECT[target.type] || target.type}. Write SQL in that dialect.`
+          : "\n\nSpecify connectorId when calling the warehouse tool, and write SQL in the dialect matching the connector type.";
+
+        guide = [
+          "You have access to the following data warehouse connectors:",
+          "",
+          ...connectorLines,
+          dialectHint,
+          "",
+          'Call the "warehouse" tool with { sql, connectorId } to execute queries.',
+        ].join("\n");
+      }
+
+      return {
+        messages: [{ role: "user", content: { type: "text", text: guide } }],
+      };
     }
 
-    const warehouses = await getWarehouses();
+    if (name === "sink_guide") {
+      const sinks = await getSinks();
 
-    let guide: string;
-    if (warehouses.length === 0) {
-      guide = "No warehouse connectors are configured for your team. Ask your team admin to add one in the 5pm control plane.";
-    } else {
-      const connectorLines = warehouses.map(
-        (w) => `- ${w.name} (${SQL_DIALECT[w.type] || w.type}) — id: ${w.id} — status: ${w.status}`,
-      );
+      let guide: string;
+      if (sinks.length === 0) {
+        guide = "No vector store sinks are configured for your team. Ask your team admin to add one in the 5pm control plane.";
+      } else {
+        const connectorLines = sinks.map(
+          (s) => `- ${s.name} (${s.type}) — id: ${s.id} — index: ${(s.config as Record<string, unknown>).indexName || "unknown"} — status: ${s.status}`,
+        );
 
-      const targetId = args?.connectorId as string | undefined;
-      const target = targetId ? warehouses.find((w) => w.id === targetId) : undefined;
-      const dialectHint = target
-        ? `\n\nTarget connector "${target.name}" uses ${SQL_DIALECT[target.type] || target.type}. Write SQL in that dialect.`
-        : "\n\nSpecify connectorId when calling the warehouse tool, and write SQL in the dialect matching the connector type.";
+        const targetId = args?.connectorId as string | undefined;
+        const target = targetId ? sinks.find((s) => s.id === targetId) : undefined;
+        const targetHint = target
+          ? `\n\nTarget sink "${target.name}" uses index "${(target.config as Record<string, unknown>).indexName || "unknown"}".`
+          : "\n\nSpecify connectorId when calling the sink tool if you have multiple sinks.";
 
-      guide = [
-        "You have access to the following data warehouse connectors:",
-        "",
-        ...connectorLines,
-        dialectHint,
-        "",
-        'Call the "warehouse" tool with { sql, connectorId } to execute queries.',
-      ].join("\n");
+        guide = [
+          "You have access to the following vector store sinks:",
+          "",
+          ...connectorLines,
+          targetHint,
+          "",
+          'Call the "sink" tool with { vector, topK, connectorId?, namespace? } to perform similarity search.',
+          "You must provide a pre-computed embedding vector matching the index dimension.",
+        ].join("\n");
+      }
+
+      return {
+        messages: [{ role: "user", content: { type: "text", text: guide } }],
+      };
     }
 
-    return {
-      messages: [
-        {
-          role: "user",
-          content: { type: "text", text: guide },
-        },
-      ],
-    };
+    throw new Error(`Unknown prompt: ${name}`);
   });
 
   // ---------------------------------------------------------------------------
