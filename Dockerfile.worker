@@ -1,0 +1,25 @@
+FROM node:22-slim AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY tsconfig.json ./
+COPY src/ src/
+
+RUN npx tsc
+
+FROM node:22-slim
+
+RUN groupadd -r app && useradd -r -g app app
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && chown -R app:app /app
+
+COPY --from=builder --chown=app:app /app/dist/ dist/
+
+USER app
+
+CMD ["node", "dist/ingest-worker.js"]

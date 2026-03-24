@@ -1,13 +1,20 @@
 import snowflake from "snowflake-sdk";
-import type { WarehouseConnector, WarehouseResult, AuthMethod } from "../types.js";
+import type {
+  WarehouseConnector, WarehouseResult, AuthMethod,
+  SchemaInfo, TableInfo, ColumnInfo, RelationshipInfo,
+} from "../types.js";
 import { registerConnector } from "../registry.js";
 
 class SnowflakeConnector implements WarehouseConnector {
   private conn: snowflake.Connection;
+  private connected = false;
+  private database: string;
 
   constructor(credentials: Record<string, unknown>, authMethod: AuthMethod) {
     const account = credentials.account as string;
     if (!account) throw new Error("Snowflake requires account");
+
+    this.database = (credentials.database as string) || "";
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const connOpts: any = { account };
@@ -33,12 +40,18 @@ class SnowflakeConnector implements WarehouseConnector {
     this.conn = snowflake.createConnection(connOpts);
   }
 
-  async execute(sql: string): Promise<WarehouseResult> {
-    await new Promise<void>((resolve, reject) => {
-      this.conn.connect((err) => (err ? reject(err) : resolve()));
-    });
+  private async ensureConnected(): Promise<void> {
+    if (!this.connected) {
+      await new Promise<void>((resolve, reject) => {
+        this.conn.connect((err) => (err ? reject(err) : resolve()));
+      });
+      this.connected = true;
+    }
+  }
 
-    const rows = await new Promise<Record<string, unknown>[]>((resolve, reject) => {
+  private async runQuery(sql: string): Promise<Record<string, unknown>[]> {
+    await this.ensureConnected();
+    return new Promise<Record<string, unknown>[]>((resolve, reject) => {
       this.conn.execute({
         sqlText: sql,
         complete: (err, _stmt, rows) => {
@@ -47,12 +60,84 @@ class SnowflakeConnector implements WarehouseConnector {
         },
       });
     });
+  }
 
+  async execute(sql: string): Promise<WarehouseResult> {
+    const rows = await this.runQuery(sql);
     if (rows.length === 0) {
       return { columns: [], rows: [], rowCount: 0 };
     }
     const columns = Object.keys(rows[0]);
     return { columns, rows, rowCount: rows.length };
+  }
+
+  async listSchemas(): Promise<SchemaInfo[]> {
+    const rows = await this.runQuery(
+      `SELECT SCHEMA_NAME FROM ${this.database}.INFORMATION_SCHEMA.SCHEMATA
+       WHERE SCHEMA_NAME NOT IN ('INFORMATION_SCHEMA')
+       ORDER BY SCHEMA_NAME`,
+    );
+    return rows.map((r) => ({ schema: r.SCHEMA_NAME as string }));
+  }
+
+  async listTables(schema: string): Promise<TableInfo[]> {
+    const rows = await this.runQuery(
+      `SELECT TABLE_NAME, ROW_COUNT, COMMENT
+       FROM ${this.database}.INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = '${schema.replace(/'/g, "''")}'
+       AND TABLE_TYPE = 'BASE TABLE'
+       ORDER BY TABLE_NAME`,
+    );
+    return rows.map((r) => ({
+      schema,
+      table: r.TABLE_NAME as string,
+      rowCount: r.ROW_COUNT != null ? Number(r.ROW_COUNT) : undefined,
+      comment: (r.COMMENT as string) || undefined,
+    }));
+  }
+
+  async listColumns(schema: string, table: string): Promise<ColumnInfo[]> {
+    const rows = await this.runQuery(
+      `SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COMMENT
+       FROM ${this.database}.INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = '${schema.replace(/'/g, "''")}'
+       AND TABLE_NAME = '${table.replace(/'/g, "''")}'
+       ORDER BY ORDINAL_POSITION`,
+    );
+
+    const pkRows = await this.runQuery(
+      `SHOW PRIMARY KEYS IN ${this.database}."${schema}"."${table}"`,
+    ).catch(() => [] as Record<string, unknown>[]);
+    const pkColumns = new Set(pkRows.map((r) => (r.column_name ?? r.COLUMN_NAME) as string));
+
+    return rows.map((r) => ({
+      schema,
+      table,
+      column: r.COLUMN_NAME as string,
+      dataType: r.DATA_TYPE as string,
+      nullable: r.IS_NULLABLE === "YES",
+      isPrimaryKey: pkColumns.has(r.COLUMN_NAME as string),
+      comment: (r.COMMENT as string) || undefined,
+    }));
+  }
+
+  async listRelationships(schema: string): Promise<RelationshipInfo[]> {
+    try {
+      const rows = await this.runQuery(
+        `SHOW IMPORTED KEYS IN SCHEMA ${this.database}."${schema}"`,
+      );
+      return rows.map((r) => ({
+        fromSchema: (r.fk_schema_name ?? r.FK_SCHEMA_NAME) as string,
+        fromTable: (r.fk_table_name ?? r.FK_TABLE_NAME) as string,
+        fromColumn: (r.fk_column_name ?? r.FK_COLUMN_NAME) as string,
+        toSchema: (r.pk_schema_name ?? r.PK_SCHEMA_NAME) as string,
+        toTable: (r.pk_table_name ?? r.PK_TABLE_NAME) as string,
+        toColumn: (r.pk_column_name ?? r.PK_COLUMN_NAME) as string,
+        constraintName: (r.fk_name ?? r.FK_NAME) as string,
+      }));
+    } catch {
+      return [];
+    }
   }
 
   async close(): Promise<void> {

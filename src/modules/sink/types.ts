@@ -12,8 +12,19 @@ export interface SinkResult {
   namespace: string;
 }
 
+export interface VectorRecord {
+  id: string;
+  values: number[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpsertResult {
+  upsertedCount: number;
+}
+
 export interface SinkConnector {
   query(vector: number[], topK: number, namespace?: string): Promise<SinkResult>;
+  upsert(records: VectorRecord[], namespace?: string): Promise<UpsertResult>;
   close(): Promise<void>;
 }
 

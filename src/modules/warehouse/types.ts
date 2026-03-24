@@ -7,8 +7,43 @@ export interface WarehouseResult {
   rowCount: number;
 }
 
+export interface SchemaInfo {
+  schema: string;
+}
+
+export interface TableInfo {
+  schema: string;
+  table: string;
+  rowCount?: number;
+  comment?: string;
+}
+
+export interface ColumnInfo {
+  schema: string;
+  table: string;
+  column: string;
+  dataType: string;
+  nullable: boolean;
+  isPrimaryKey: boolean;
+  comment?: string;
+}
+
+export interface RelationshipInfo {
+  fromSchema: string;
+  fromTable: string;
+  fromColumn: string;
+  toSchema: string;
+  toTable: string;
+  toColumn: string;
+  constraintName: string;
+}
+
 export interface WarehouseConnector {
   execute(sql: string): Promise<WarehouseResult>;
+  listSchemas(): Promise<SchemaInfo[]>;
+  listTables(schema: string): Promise<TableInfo[]>;
+  listColumns(schema: string, table: string): Promise<ColumnInfo[]>;
+  listRelationships(schema: string): Promise<RelationshipInfo[]>;
   close(): Promise<void>;
 }
 

@@ -5,6 +5,7 @@
 | Path | Purpose |
 |---|---|
 | `docker-compose.yml` | Local dev infrastructure (Redis + Postgres) |
+| `Dockerfile.worker` | Container image for **gamma-ingest-worker** (Cloud Run Job) |
 | `db/init.sql` | Postgres schema init — roles, tables, RLS setup |
 | `package.json` | Node.js dependencies and scripts |
 | `tsconfig.json` | TypeScript compiler config |
@@ -121,6 +122,32 @@ Multi-tenant vector store query module. Same strategy + registry pattern as ware
 | `registry.ts` | Map-based sink connector registry |
 | `service.ts` | `listSinks()`, `executeSinkQuery()` — orchestrator with RLS via `withUserContext` |
 | `connectors/pinecone.ts` | Pinecone connector (self-registers) |
+
+### `src/modules/ingest/`
+
+Ingest pipeline module: Cloud Run Job entry uses `src/ingest-worker.ts`; stage implementations live under `stages/`.
+
+| File | Purpose |
+|---|---|
+| `types.ts` | Shared ingest types (runs, stages, pipeline context) |
+| `pipeline.ts` | Orchestrates preflight → upsert; wires stages and reporter |
+| `reporter.ts` | Writes `ingest_run_stages` / `ingest_run_logs` to Postgres |
+| `embedder.ts` | Embedding HTTP client (direct `fetch`, no OpenAI SDK) |
+| `stages/preflight.ts` | Preflight stage |
+| `stages/crawl.ts` | Warehouse metadata crawl |
+| `stages/relationships.ts` | Relationship discovery |
+| `stages/documents.ts` | Document assembly |
+| `stages/chunk.ts` | Chunking for embeddings |
+| `stages/embed.ts` | Batch / call embedding API |
+| `stages/upsert.ts` | Vector upsert via sink connector |
+
+### Ingest worker entrypoint
+
+| File | Purpose |
+|---|---|
+| `src/ingest-worker.ts` | Cloud Run Job entrypoint — loads config, runs pipeline |
+
+The **ingest-worker** container image is built from **`Dockerfile.worker`** (see [Root](#root), e.g. tag `ingest-worker:v1`).
 
 ### `src/apps/`
 

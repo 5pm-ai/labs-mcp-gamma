@@ -114,3 +114,53 @@
 **Prevention:**
 - Never inline non-trivial code in Cloud Run Job `--args`. Always use a script file.
 - Use CommonJS (`.cjs`) for scripts that need `require()` in an ESM project.
+
+---
+
+### [2026-03-24] FORCE ROW LEVEL SECURITY blocks new roles without explicit policies
+
+**Context:** Building the ingest worker which connects to the shared Postgres as a new `ingest_app` role. Existing tables (`team_members`, `warehouse_connectors`, `sink_connectors`) have `FORCE ROW LEVEL SECURITY` enabled.
+
+**Symptoms:** All SELECT queries from `ingest_app` returned zero rows, even with correct `SET LOCAL app.user_id` and `GRANT SELECT` in place. Worker reported "Ingest run not found" because it couldn't see any rows.
+
+**Root Cause:** `FORCE ROW LEVEL SECURITY` means even roles with table grants get zero rows if no RLS policy exists for that role. The existing policies were only defined for `mcp_app` and `ctrl_app`. Adding `GRANT SELECT ON team_members TO ingest_app` is necessary but insufficient — an RLS policy for `ingest_app` on `team_members` is also required (permissive SELECT, since `team_members` is used in RLS subqueries for all other tables).
+
+**Resolution:** Added `CREATE POLICY ingest_app_team_members_read ON team_members FOR SELECT TO ingest_app USING (true)` and corresponding policies on all ingest tables.
+
+**Prevention:**
+- When introducing a new Postgres role, audit every table it needs to read and ensure an RLS policy exists for that role — grants alone are not enough under `FORCE ROW LEVEL SECURITY`.
+- Tables used in RLS subqueries (like `team_members`) need permissive policies for every role that accesses RLS-protected tables.
+
+---
+
+### [2026-03-24] Worker must use its own DB role and DATABASE_URL — no role sharing
+
+**Context:** Initial ingest worker implementation used the MCP server's `DATABASE_URL` (connecting as `mcp_app`). This worked temporarily after granting `mcp_app` write access on ingest tables.
+
+**Symptoms:** Defense-in-depth violation — `mcp_app` had write access to tables it should only read, and the worker shared the MCP server's blast radius.
+
+**Root Cause:** Shortcut taken to avoid creating a separate connection string for the worker. Led to role permission sprawl and violated the principle that each service should have the minimum necessary privileges.
+
+**Resolution:** Worker uses `INGEST_DATABASE_URL` (connecting as `ingest_app`) with its own scoped grants. `mcp_app` reverted to SELECT-only on ingest tables.
+
+**Prevention:**
+- Every distinct workload (MCP server, ctrl-api, ingest worker) must have its own Postgres role with minimum necessary grants.
+- Never expand an existing role's permissions as a shortcut — create the correct role from the start.
+- Local dev `.env` must mirror the production role separation.
+
+---
+
+### [2026-03-24] EventSource API cannot set Authorization headers — SSE with JWTs leaks tokens in URLs
+
+**Context:** Implemented SSE endpoint for real-time ingest progress. Browser `EventSource` API doesn't support custom headers, so the JWT was passed as a `?token=` query parameter.
+
+**Symptoms:** JWT visible in proxy logs, browser history, and Vite dev server output. Violated defense-in-depth.
+
+**Root Cause:** The `EventSource` browser API is inherently incompatible with `Authorization: Bearer` header auth. Any workaround (query param, cookie) either leaks the token or introduces session management complexity.
+
+**Resolution:** Removed SSE entirely. Replaced with client-side polling of existing REST endpoints (`GET /api/ingests/runs/:runId` + `GET /api/ingests/runs/:runId/logs`) using standard `fetch` with `Authorization` header. Server-side SSE endpoint deleted.
+
+**Prevention:**
+- Do not use `EventSource` for authenticated endpoints that require Bearer tokens.
+- When a browser API limitation forces credentials into URLs, the correct answer is to choose a different transport — not to work around it.
+- Polling authenticated REST endpoints is simpler, secure by default, and sufficient for use cases where 2-second latency is acceptable.

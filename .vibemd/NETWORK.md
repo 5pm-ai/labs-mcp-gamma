@@ -83,3 +83,13 @@ Cloud Run (gamma-mcp, ingress: internal-and-cloud-load-balancing)
 | 10.20.0.0/16 | Private Service Access | Google-managed peering for Cloud SQL + Memorystore |
 
 Non-overlapping ranges chosen to support future VPC peering with other projects.
+
+## Ingest Worker Egress
+
+| Path | Route | Notes |
+|---|---|---|
+| Worker → Postgres | Private IP, same VPC / PSA as **gamma-mcp** | Cloud SQL on `10.20.0.3:5432` (SSL). No public DB endpoint. |
+| Worker → OpenAI API | Internet via **Cloud NAT** | Same static egress pattern as Auth0 (`gamma-nat-ip-1`); suitable for allowlisting. |
+| Worker → Sink (Pinecone API) | Internet via **Cloud NAT** | HTTPS to Pinecone; not routed through the MCP load balancer. |
+
+The ingest Cloud Run Job uses **Direct VPC Egress** on **sn-app** like **gamma-mcp**, so database traffic stays on private paths while provider APIs use controlled NAT egress.

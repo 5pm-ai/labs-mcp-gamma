@@ -19,6 +19,7 @@ import { listWarehouses, executeWarehouseQuery } from "../../warehouse/service.j
 import type { WarehouseInfo } from "../../warehouse/service.js";
 import { listSinks, executeSinkQuery } from "../../sink/service.js";
 import type { SinkInfo } from "../../sink/service.js";
+import { withUserContext } from "../../shared/postgres.js";
 
 type ToolInput = Tool["inputSchema"];
 
@@ -45,6 +46,23 @@ enum ToolName {
 }
 
 const WAREHOUSE_APP_URI = "ui://warehouse/app.html";
+const INGEST_CATALOG_URI = "ingest://catalog";
+
+interface IngestCatalogEntry {
+  ingestId: string;
+  name: string;
+  warehouseName: string;
+  warehouseType: string;
+  sinkName: string;
+  sinkType: string;
+  embeddingModel: string;
+  lastRunStatus: string | null;
+  lastRunAt: string | null;
+  schemasDiscovered: number;
+  tablesDiscovered: number;
+  columnsDiscovered: number;
+  relationshipsDiscovered: number;
+}
 
 const SQL_DIALECT: Record<string, string> = {
   bigquery: "Google Standard SQL",
@@ -90,6 +108,55 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     return listSinks(userId);
   };
 
+  const getIngestCatalog = async (): Promise<IngestCatalogEntry[]> => {
+    if (!isWarehouseAvailable()) return [];
+    try {
+      const result = await withUserContext(userId, async (client) => {
+        return client.query<{
+          ingest_id: string; name: string;
+          wh_name: string; wh_type: string;
+          sink_name: string; sink_type: string;
+          embedding_model: string;
+          last_run_status: string | null; last_run_at: string | null;
+          schemas_discovered: number; tables_discovered: number;
+          columns_discovered: number; relationships_discovered: number;
+        }>(
+          `SELECT i.id AS ingest_id, i.name,
+                  wc.name AS wh_name, wc.type AS wh_type,
+                  sc.name AS sink_name, sc.type AS sink_type,
+                  i.embedding_model,
+                  lr.status AS last_run_status, lr.completed_at AS last_run_at,
+                  COALESCE(lr.schemas_discovered, 0) AS schemas_discovered,
+                  COALESCE(lr.tables_discovered, 0) AS tables_discovered,
+                  COALESCE(lr.columns_discovered, 0) AS columns_discovered,
+                  COALESCE(lr.relationships_discovered, 0) AS relationships_discovered
+           FROM ingests i
+           JOIN warehouse_connectors wc ON wc.id = i.warehouse_connector_id
+           JOIN sink_connectors sc ON sc.id = i.sink_connector_id
+           LEFT JOIN ingest_runs lr ON lr.id = i.last_run_id
+           ORDER BY i.created_at DESC`,
+        );
+      });
+      return result.rows.map((r) => ({
+        ingestId: r.ingest_id,
+        name: r.name,
+        warehouseName: r.wh_name,
+        warehouseType: r.wh_type,
+        sinkName: r.sink_name,
+        sinkType: r.sink_type,
+        embeddingModel: r.embedding_model,
+        lastRunStatus: r.last_run_status,
+        lastRunAt: r.last_run_at,
+        schemasDiscovered: r.schemas_discovered,
+        tablesDiscovered: r.tables_discovered,
+        columnsDiscovered: r.columns_discovered,
+        relationshipsDiscovered: r.relationships_discovered,
+      }));
+    } catch {
+      return [];
+    }
+  };
+
   // ---------------------------------------------------------------------------
   // Resources
   // ---------------------------------------------------------------------------
@@ -117,6 +184,16 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
         name: "5pm Warehouse App",
         description: "Interactive UI for the warehouse tool",
         mimeType: "text/html;profile=mcp-app",
+      });
+    }
+
+    const catalog = sinks.length > 0 ? await getIngestCatalog() : [];
+    if (catalog.length > 0) {
+      resources.push({
+        uri: INGEST_CATALOG_URI,
+        name: "Ingest Catalog",
+        description: "Summary-level semiotic topology manifest: ingested warehouses, schema/table/column counts, and warehouse-to-sink bindings",
+        mimeType: "application/json",
       });
     }
 
@@ -160,6 +237,17 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
       };
     }
 
+    if (uri === INGEST_CATALOG_URI) {
+      const catalog = await getIngestCatalog();
+      return {
+        contents: [{
+          uri,
+          mimeType: "application/json",
+          text: JSON.stringify(catalog, null, 2),
+        }],
+      };
+    }
+
     throw new Error(`Unknown resource: ${uri}`);
   });
 
@@ -190,6 +278,11 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
               required: false,
             },
           ],
+        },
+        {
+          name: "ingest_catalog_guide",
+          description: "Guide for discovering data topology through the ingest catalog and sink tool",
+          arguments: [],
         },
       ],
     };
@@ -255,6 +348,39 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
           "",
           'Call the "sink" tool with { vector, topK, connectorId?, namespace? } to perform similarity search.',
           "You must provide a pre-computed embedding vector matching the index dimension.",
+        ].join("\n");
+      }
+
+      return {
+        messages: [{ role: "user", content: { type: "text", text: guide } }],
+      };
+    }
+
+    if (name === "ingest_catalog_guide") {
+      const catalog = await getIngestCatalog();
+
+      let guide: string;
+      if (catalog.length === 0) {
+        guide = "No ingest pipelines have been run. Ask your team admin to create and run an ingest in the 5pm control plane.";
+      } else {
+        const lines = catalog.map((c) => [
+          `- "${c.name}": ${c.warehouseName} (${c.warehouseType}) → ${c.sinkName} (${c.sinkType})`,
+          `  Model: ${c.embeddingModel} | Last run: ${c.lastRunStatus || "never"}`,
+          `  Discovered: ${c.schemasDiscovered} schemas, ${c.tablesDiscovered} tables, ${c.columnsDiscovered} columns, ${c.relationshipsDiscovered} relationships`,
+        ].join("\n"));
+
+        guide = [
+          "The ingest catalog shows which warehouses have been introspected and indexed into vector sinks.",
+          "Read the ingest://catalog resource for the full manifest.",
+          "",
+          "To discover data topology:",
+          '1. Use the "sink" tool with a semantic query vector to find relevant schemas/tables',
+          "2. Each sink result includes metadata: warehouseConnectorId, schema, table, columns, relationships",
+          "3. Use the warehouseConnectorId from sink results to query the actual warehouse for data",
+          "",
+          "Current ingests:",
+          "",
+          ...lines,
         ].join("\n");
       }
 

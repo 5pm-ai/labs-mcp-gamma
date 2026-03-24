@@ -1,6 +1,8 @@
-import { Pinecone } from "@pinecone-database/pinecone";
-import type { SinkConnector, SinkResult } from "../types.js";
+import { Pinecone, type RecordMetadata } from "@pinecone-database/pinecone";
+import type { SinkConnector, SinkResult, VectorRecord, UpsertResult } from "../types.js";
 import { registerSinkConnector } from "../registry.js";
+
+const UPSERT_BATCH_SIZE = 100;
 
 class PineconeConnector implements SinkConnector {
   private pc: Pinecone;
@@ -37,6 +39,27 @@ class PineconeConnector implements SinkConnector {
       })),
       namespace: response.namespace || ns || "",
     };
+  }
+
+  async upsert(records: VectorRecord[], namespace?: string): Promise<UpsertResult> {
+    const index = this.pc.index(this.indexName);
+    const ns = namespace || this.defaultNamespace;
+    const target = ns ? index.namespace(ns) : index;
+
+    let upsertedCount = 0;
+    for (let i = 0; i < records.length; i += UPSERT_BATCH_SIZE) {
+      const batch = records.slice(i, i + UPSERT_BATCH_SIZE);
+      await target.upsert({
+        records: batch.map((r) => ({
+          id: r.id,
+          values: r.values,
+          metadata: r.metadata as RecordMetadata | undefined,
+        })),
+      });
+      upsertedCount += batch.length;
+    }
+
+    return { upsertedCount };
   }
 
   async close(): Promise<void> {}

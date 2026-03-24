@@ -20,7 +20,9 @@
     "test:e2e": "./scripts/test-e2e-all.sh",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "dev:worker": "tsx src/ingest-worker.ts",
+    "start:worker": "node dist/ingest-worker.js"
   },
   "dependencies": {
     "@clickhouse/client": "^1.18.2",

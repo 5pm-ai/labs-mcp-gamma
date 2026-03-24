@@ -13,12 +13,16 @@
 | gamma-nat | Cloud NAT | Outbound internet for private resources | us-east4 | persistent | braun | 2026-03-17 | Covers sn-app, sn-mgmt |
 | gamma-nat-ip-1 | Static IP | NAT egress IP for upstream whitelisting | 34.150.236.79, us-east4 | persistent | braun | 2026-03-17 | Use for upstream IP allowlisting |
 | gamma-lb-ip | Static IP | External LB frontend | 34.54.83.204, global | persistent | braun | 2026-03-17 | Cloudflare A record target |
-| gamma-pg | Cloud SQL | PostgreSQL 16 (Enterprise, db-f1-micro) | us-east4, private IP 10.20.0.3 | persistent | braun | 2026-03-17 | No public IP. DB: mcp. Users: postgres, mcp_app |
+| gamma-pg | Cloud SQL | PostgreSQL 16 (Enterprise, db-f1-micro) | us-east4, private IP 10.20.0.3 | persistent | braun | 2026-03-17 | No public IP. DB: mcp. Users: postgres, mcp_app, ingest_app |
 | gamma-redis | Memorystore | Redis 7.2 (Basic, 1GB) | us-east4, private IP 10.20.1.3:6378 | persistent | braun | 2026-03-17 | TLS in-transit encryption enabled. No public IP. |
 | gamma-bastion | Compute Engine | Bastion host (e2-micro, Debian 12) | us-east4-a, 10.10.2.2 | persistent | braun | 2026-03-17 | No public IP. IAP SSH only. SA: sa-bastion |
 | gamma-docker | Artifact Registry | Docker image repository | us-east4 | persistent | braun | 2026-03-17 | IAM-gated, no public access |
 | gamma-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-03-18 | Ingress: internal-and-cloud-load-balancing. SA: sa-mcp-server. Image: mcp-server:v4 |
 | db-migrate | Cloud Run Job | Database schema init / migrations | us-east4 | persistent | braun | 2026-03-17 | On-demand: `gcloud run jobs execute db-migrate` SA: sa-db-admin |
+| gamma-ingest-worker | Cloud Run Job | Metadata ingest pipeline (preflight → upsert) | us-east4 | persistent | braun | 2026-03-24 | No public ingress. SA: sa-ingest-worker. Dispatched by ctrl-api |
+| sa-ingest-worker | IAM Service Account | Runtime identity for ingest job | ai-5pm-labs.iam.gserviceaccount.com | persistent | braun | 2026-03-24 | See Service Accounts table for IAM bindings |
+| ingest_app | Postgres role | RLS-scoped DB role for ingest worker | gamma-pg / mcp | persistent | braun | 2026-03-24 | No credential write access; see db migrations |
+| ingest-worker:v1 | Container image | Ingest job Docker image | Artifact Registry (gamma-docker) | persistent | braun | 2026-03-24 | Built from `Dockerfile.worker` |
 | gamma-5pm-ai-origin | SSL Certificate | Cloudflare Origin CA (self-managed) | global, GCP | persistent | braun | 2026-03-17 | Wildcard *.5pm.ai, expires 2040-06-06 |
 | gamma-mcp-neg | Serverless NEG | Cloud Run -> LB bridge | us-east4 | persistent | braun | 2026-03-17 | Points to gamma-mcp Cloud Run service |
 | gamma-mcp-backend | Backend Service | LB backend | global | persistent | braun | 2026-03-17 | EXTERNAL_MANAGED scheme |
@@ -31,6 +35,7 @@
 |---|---|---|
 | sa-mcp-server@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run MCP server | cloudsql.client, secretmanager.secretAccessor, redis.editor, artifactregistry.reader |
 | sa-db-admin@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run Job (migrations) | cloudsql.client, secretmanager.secretAccessor, artifactregistry.reader |
+| sa-ingest-worker@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run Job (gamma-ingest-worker) | cloudsql.client, secretmanager.secretAccessor (openai-api-key), cloudkms.cryptoKeyDecrypter, artifactregistry.reader |
 | sa-bastion@ai-5pm-labs.iam.gserviceaccount.com | Bastion VM | compute.osLogin, artifactregistry.reader |
 | sa-egress@ai-5pm-labs.iam.gserviceaccount.com | Internet egress identity | (minimal, attach to workloads needing internet) |
 
@@ -55,6 +60,7 @@
 | database-url | Postgres connection string (mcp_app) | sslmode=no-verify, private IP |
 | database-admin-url | Postgres connection string (postgres) | Used by db-migrate job only |
 | redis-tls-ca | Memorystore Redis server CA cert | Required for TLS connections |
+| openai-api-key | OpenAI API key for ingest embeddings | Accessor: sa-ingest-worker only |
 
 ## Environment Variables (Cloud Run: gamma-mcp)
 
