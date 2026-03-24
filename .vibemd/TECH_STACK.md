@@ -19,4 +19,9 @@
 | GCP Cloud NAT | managed | Outbound internet for private resources |
 | GCP Artifact Registry | Docker | Container image storage |
 | GCP Secret Manager | managed | Production secrets (DB URLs, Auth0, Redis CA) |
+| GCP KMS | managed | Envelope encryption for warehouse/sink credentials |
+| @google-cloud/bigquery | ^8.1 | BigQuery warehouse connector |
+| snowflake-sdk | ^2.3 | Snowflake warehouse connector |
+| @clickhouse/client | ^1.18 | ClickHouse warehouse connector |
+| @pinecone-database/pinecone | latest | Pinecone sink connector |
 | Cloudflare | CDN/DNS/Proxy | DNS, TLS termination (Full SSL, Origin CA) |
