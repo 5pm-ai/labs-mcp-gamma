@@ -42,6 +42,7 @@
     "@modelcontextprotocol/server-transcript": "^1.1.2",
     "@modelcontextprotocol/server-video-resource": "^1.1.2",
     "@modelcontextprotocol/server-wiki-explorer": "^1.1.2",
+    "@pinecone-database/pinecone": "^7.1.0",
     "@redis/client": "^1.6.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

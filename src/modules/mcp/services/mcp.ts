@@ -17,6 +17,8 @@ import { config } from "../../../config.js";
 import { isPostgresReady } from "../../shared/postgres.js";
 import { listWarehouses, executeWarehouseQuery } from "../../warehouse/service.js";
 import type { WarehouseInfo } from "../../warehouse/service.js";
+import { listSinks, executeSinkQuery } from "../../sink/service.js";
+import type { SinkInfo } from "../../sink/service.js";
 
 type ToolInput = Tool["inputSchema"];
 
@@ -30,8 +32,16 @@ const WarehouseQuerySchema = z.object({
   connectorId: z.string().optional().describe("Warehouse connector ID. If omitted and only one connector exists, it will be used automatically."),
 });
 
+const SinkQuerySchema = z.object({
+  vector: z.array(z.number()).describe("Query vector for similarity search"),
+  topK: z.number().default(10).describe("Number of nearest neighbors to return"),
+  connectorId: z.string().optional().describe("Sink connector ID. If omitted and only one connector exists, it will be used automatically."),
+  namespace: z.string().optional().describe("Pinecone namespace to search within"),
+});
+
 enum ToolName {
   WAREHOUSE = "warehouse",
+  SINK = "sink",
 }
 
 const WAREHOUSE_APP_URI = "ui://warehouse/app.html";
@@ -75,16 +85,28 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     return listWarehouses(userId);
   };
 
+  const getSinks = async (): Promise<SinkInfo[]> => {
+    if (!isWarehouseAvailable()) return [];
+    return listSinks(userId);
+  };
+
   // ---------------------------------------------------------------------------
   // Resources
   // ---------------------------------------------------------------------------
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
     const warehouses = await getWarehouses();
+    const sinks = await getSinks();
     const resources = [
       {
         uri: "warehouse://connectors",
         name: "Warehouse Connectors",
         description: "Available data warehouse connectors for the authenticated user's team",
+        mimeType: "application/json",
+      },
+      {
+        uri: "sink://connectors",
+        name: "Sink Connectors",
+        description: "Available vector store sinks for the authenticated user's team",
         mimeType: "application/json",
       },
     ];
@@ -111,6 +133,17 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
           uri,
           mimeType: "application/json",
           text: JSON.stringify(warehouses, null, 2),
+        }],
+      };
+    }
+
+    if (uri === "sink://connectors") {
+      const sinks = await getSinks();
+      return {
+        contents: [{
+          uri,
+          mimeType: "application/json",
+          text: JSON.stringify(sinks, null, 2),
         }],
       };
     }
@@ -213,6 +246,18 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
         inputSchema: toJsonSchema(WarehouseQuerySchema),
         _meta: { ui: { resourceUri: WAREHOUSE_APP_URI } },
       });
+
+      const sinks = await listSinks(userId);
+      const sinkList = sinks.length > 0
+        ? sinks.map((s) => `${s.name} (${s.type}) id:${s.id}`).join("; ")
+        : "none configured";
+
+      tools.push({
+        name: ToolName.SINK,
+        description:
+          `Query a vector store (semantic search). Available sinks: ${sinkList}`,
+        inputSchema: toJsonSchema(SinkQuerySchema),
+      });
     }
 
     return { tools };
@@ -253,6 +298,42 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
         content: [{
           type: "text",
           text: JSON.stringify({ columns: result.columns, rows: result.rows, rowCount: result.rowCount }, null, 2),
+        }],
+      };
+    }
+
+    if (name === ToolName.SINK) {
+      const { vector, topK, connectorId, namespace } = SinkQuerySchema.parse(args);
+
+      let resolvedId = connectorId;
+      if (!resolvedId) {
+        const sinks = await listSinks(userId);
+        if (sinks.length === 0) {
+          return {
+            content: [{ type: "text", text: "No sink connectors configured for your team." }],
+            isError: true,
+          };
+        }
+        if (sinks.length > 1) {
+          const lines = sinks.map(
+            (s) => `• ${s.name} (${s.type}) — id: ${s.id}`,
+          );
+          return {
+            content: [{
+              type: "text",
+              text: `Multiple sinks available. Please specify connectorId:\n${lines.join("\n")}`,
+            }],
+            isError: true,
+          };
+        }
+        resolvedId = sinks[0].id;
+      }
+
+      const result = await executeSinkQuery(userId, resolvedId, vector, topK, namespace);
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({ matches: result.matches, namespace: result.namespace }, null, 2),
         }],
       };
     }
