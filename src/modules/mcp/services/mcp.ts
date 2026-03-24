@@ -3,356 +3,147 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   CallToolRequestSchema,
-  CompleteRequestSchema,
-  CreateMessageRequest,
-  CreateMessageResultSchema,
-  ElicitResultSchema,
   GetPromptRequestSchema,
   ListPromptsRequestSchema,
   ListResourcesRequestSchema,
-  ListResourceTemplatesRequestSchema,
   ListToolsRequestSchema,
   LoggingLevel,
   ReadResourceRequestSchema,
-  Resource,
   SetLevelRequestSchema,
-  SubscribeRequestSchema,
   Tool,
-  UnsubscribeRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod/v4";
+import { config } from "../../../config.js";
+import { isPostgresReady } from "../../shared/postgres.js";
+import { listWarehouses, executeWarehouseQuery } from "../../warehouse/service.js";
+import type { WarehouseInfo } from "../../warehouse/service.js";
 
 type ToolInput = Tool["inputSchema"];
 
-// Helper to convert Zod schema to JSON schema using Zod v4's native support
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const toJsonSchema = (schema: z.ZodType<any>): ToolInput => {
   return z.toJSONSchema(schema) as ToolInput;
 };
 
-/* Input schemas for tools implemented in this server */
-const EchoSchema = z.object({
-  message: z.string().describe("Message to echo"),
-});
-
-const AddSchema = z.object({
-  a: z.number().describe("First number"),
-  b: z.number().describe("Second number"),
-});
-
-const LongRunningOperationSchema = z.object({
-  duration: z
-    .number()
-    .default(10)
-    .describe("Duration of the operation in seconds"),
-  steps: z.number().default(5).describe("Number of steps in the operation"),
-});
-
-const SampleLLMSchema = z.object({
-  prompt: z.string().describe("The prompt to send to the LLM"),
-  maxTokens: z
-    .number()
-    .default(100)
-    .describe("Maximum number of tokens to generate"),
-});
-
-// Example completion values
-const EXAMPLE_COMPLETIONS = {
-  style: ["casual", "formal", "technical", "friendly"],
-  temperature: ["0", "0.5", "0.7", "1.0"],
-  resourceId: ["1", "2", "3", "4", "5"],
-};
-
-const GetTinyImageSchema = z.object({});
-
-const AnnotatedMessageSchema = z.object({
-  messageType: z
-    .enum(["error", "success", "debug"])
-    .describe("Type of message to demonstrate different annotation patterns"),
-  includeImage: z
-    .boolean()
-    .default(false)
-    .describe("Whether to include an example image"),
-});
-
-const GetResourceReferenceSchema = z.object({
-  resourceId: z
-    .number()
-    .min(1)
-    .max(100)
-    .describe("ID of the resource to reference (1-100)"),
+const WarehouseQuerySchema = z.object({
+  sql: z.string().describe("SQL query to execute against the warehouse"),
+  connectorId: z.string().optional().describe("Warehouse connector ID. If omitted and only one connector exists, it will be used automatically."),
 });
 
 enum ToolName {
-  ECHO = "echo",
-  ADD = "add",
-  LONG_RUNNING_OPERATION = "longRunningOperation",
-  SAMPLE_LLM = "sampleLLM",
-  GET_TINY_IMAGE = "getTinyImage",
-  ANNOTATED_MESSAGE = "annotatedMessage",
-  GET_RESOURCE_REFERENCE = "getResourceReference",
-  ELICIT_INPUTS = "elicitInputs",
-  MCP_APPS_HELLO_WORLD = "mcp_apps_hello_world",
+  WAREHOUSE = "warehouse",
 }
 
-// MCP Apps constants
-const HELLO_WORLD_APP_URI = "ui://hello-world/app.html";
+const WAREHOUSE_APP_URI = "ui://warehouse/app.html";
 
-enum PromptName {
-  SIMPLE = "simple_prompt",
-  COMPLEX = "complex_prompt",
-  RESOURCE = "resource_prompt",
-}
+const SQL_DIALECT: Record<string, string> = {
+  bigquery: "Google Standard SQL",
+  snowflake: "Snowflake SQL",
+  clickhouse: "ClickHouse SQL",
+};
 
 interface McpServerWrapper {
   server: Server;
   cleanup: () => void;
 }
 
-export const createMcpServer = (): McpServerWrapper => {
+export const createMcpServer = (userId: string): McpServerWrapper => {
   const server = new Server(
     {
-      name: "example-servers/feature-reference",
+      name: "5pm/mcp",
       version: "1.0.0",
     },
     {
       capabilities: {
         prompts: {},
-        resources: { subscribe: true },
+        resources: {},
         tools: {},
         logging: {},
-        completions: {},
       },
     }
   );
 
-  const subscriptions: Set<string> = new Set();
-
-  // Set up update interval for subscribed resources
-  const subsUpdateInterval = setInterval(() => {
-    for (const uri of subscriptions) {
-      server.notification({
-        method: "notifications/resources/updated",
-        params: { uri },
-      });
-    }
-  }, 10000);
-
   let logLevel: LoggingLevel = "debug";
-  const messages = [
-    { level: "debug", data: "Debug-level message" },
-    { level: "info", data: "Info-level message" },
-    { level: "notice", data: "Notice-level message" },
-    { level: "warning", data: "Warning-level message" },
-    { level: "error", data: "Error-level message" },
-    { level: "critical", data: "Critical-level message" },
-    { level: "alert", data: "Alert level-message" },
-    { level: "emergency", data: "Emergency-level message" },
+  const LOG_LEVELS: LoggingLevel[] = [
+    "debug", "info", "notice", "warning", "error", "critical", "alert", "emergency",
   ];
 
-  const isMessageIgnored = (level: LoggingLevel): boolean => {
-    const currentLevel = messages.findIndex((msg) => logLevel === msg.level);
-    const messageLevel = messages.findIndex((msg) => level === msg.level);
-    return messageLevel < currentLevel;
+  const isWarehouseAvailable = () => config.kms.enabled && isPostgresReady();
+
+  const getWarehouses = async (): Promise<WarehouseInfo[]> => {
+    if (!isWarehouseAvailable()) return [];
+    return listWarehouses(userId);
   };
 
-  // Set up update interval for random log messages
-  const logsUpdateInterval = setInterval(() => {
-    const message = {
-      method: "notifications/message",
-      params: messages[Math.floor(Math.random() * messages.length)],
-    };
-    if (!isMessageIgnored(message.params.level as LoggingLevel))
-      server.notification(message);
-  }, 20000);
-
-
-  // Set up update interval for stderr messages
-  const stdErrUpdateInterval = setInterval(() => {
-    const shortTimestamp = new Date().toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-    server.notification({
-      method: "notifications/stderr",
-      params: { content: `${shortTimestamp}: A stderr message` },
-    });
-  }, 30000);
-
-  // Helper method to request sampling from client
-  const requestSampling = async (
-    context: string,
-    uri: string,
-    maxTokens: number = 100
-  ) => {
-    const request: CreateMessageRequest = {
-      method: "sampling/createMessage",
-      params: {
-        messages: [
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: `Resource ${uri} context: ${context}`,
-            },
-          },
-        ],
-        systemPrompt: "You are a helpful test server.",
-        maxTokens,
-        temperature: 0.7,
-        includeContext: "thisServer",
-      },
-    };
-
-    return await server.request(request, CreateMessageResultSchema);
-  };
-
-  const ALL_RESOURCES: Resource[] = Array.from({ length: 100 }, (_, i) => {
-    const uri = `test://static/resource/${i + 1}`;
-    if (i % 2 === 0) {
-      return {
-        uri,
-        name: `Resource ${i + 1}`,
-        mimeType: "text/plain",
-        text: `Resource ${i + 1}: This is a plaintext resource`,
-      };
-    } else {
-      const buffer = Buffer.from(`Resource ${i + 1}: This is a base64 blob`);
-      return {
-        uri,
-        name: `Resource ${i + 1}`,
-        mimeType: "application/octet-stream",
-        blob: buffer.toString("base64"),
-      };
-    }
-  });
-
-  const PAGE_SIZE = 10;
-
-  server.setRequestHandler(ListResourcesRequestSchema, async (request) => {
-    const cursor = request.params?.cursor;
-    let startIndex = 0;
-
-    if (cursor) {
-      const decodedCursor = parseInt(atob(cursor), 10);
-      if (!isNaN(decodedCursor)) {
-        startIndex = decodedCursor;
-      }
-    }
-
-    const endIndex = Math.min(startIndex + PAGE_SIZE, ALL_RESOURCES.length);
-    const resources = ALL_RESOURCES.slice(startIndex, endIndex);
-
-    let nextCursor: string | undefined;
-    if (endIndex < ALL_RESOURCES.length) {
-      nextCursor = btoa(endIndex.toString());
-    }
-
-    // Add MCP Apps UI resources
-    const uiResources: Resource[] = [
+  // ---------------------------------------------------------------------------
+  // Resources
+  // ---------------------------------------------------------------------------
+  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    const warehouses = await getWarehouses();
+    const resources = [
       {
-        uri: HELLO_WORLD_APP_URI,
-        name: "Hello World MCP App",
-        description: "Interactive UI for the mcp_apps_hello_world tool",
-        mimeType: "text/html;profile=mcp-app",
+        uri: "warehouse://connectors",
+        name: "Warehouse Connectors",
+        description: "Available data warehouse connectors for the authenticated user's team",
+        mimeType: "application/json",
       },
     ];
 
-    return {
-      resources: [...resources, ...uiResources],
-      nextCursor,
-    };
-  });
+    if (warehouses.length > 0) {
+      resources.push({
+        uri: WAREHOUSE_APP_URI,
+        name: "5pm Warehouse App",
+        description: "Interactive UI for the warehouse tool",
+        mimeType: "text/html;profile=mcp-app",
+      });
+    }
 
-  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
-    return {
-      resourceTemplates: [
-        {
-          uriTemplate: "test://static/resource/{id}",
-          name: "Static Resource",
-          description: "A static resource with a numeric ID",
-        },
-      ],
-    };
+    return { resources };
   });
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const uri = request.params.uri;
 
-    if (uri.startsWith("test://static/resource/")) {
-      const index = parseInt(uri.split("/").pop() ?? "", 10) - 1;
-      if (index >= 0 && index < ALL_RESOURCES.length) {
-        const resource = ALL_RESOURCES[index];
-        return {
-          contents: [resource],
-        };
-      }
+    if (uri === "warehouse://connectors") {
+      const warehouses = await getWarehouses();
+      return {
+        contents: [{
+          uri,
+          mimeType: "application/json",
+          text: JSON.stringify(warehouses, null, 2),
+        }],
+      };
     }
 
-    // MCP Apps UI resources
-    if (uri === HELLO_WORLD_APP_URI) {
+    if (uri === WAREHOUSE_APP_URI) {
       const distDir = path.join(import.meta.dirname, "../../../apps");
       const html = await fs.readFile(path.join(distDir, "mcp-app.html"), "utf-8");
       return {
-        contents: [
-          {
-            uri,
-            mimeType: "text/html;profile=mcp-app",
-            text: html,
-          },
-        ],
+        contents: [{
+          uri,
+          mimeType: "text/html;profile=mcp-app",
+          text: html,
+        }],
       };
     }
 
     throw new Error(`Unknown resource: ${uri}`);
   });
 
-  server.setRequestHandler(SubscribeRequestSchema, async (request) => {
-    const { uri } = request.params;
-    subscriptions.add(uri);
-
-    // Request sampling from client when someone subscribes
-    await requestSampling("A new subscription was started", uri);
-    return {};
-  });
-
-  server.setRequestHandler(UnsubscribeRequestSchema, async (request) => {
-    subscriptions.delete(request.params.uri);
-    return {};
-  });
-
+  // ---------------------------------------------------------------------------
+  // Prompts
+  // ---------------------------------------------------------------------------
   server.setRequestHandler(ListPromptsRequestSchema, async () => {
     return {
       prompts: [
         {
-          name: PromptName.SIMPLE,
-          description: "A prompt without arguments",
-        },
-        {
-          name: PromptName.COMPLEX,
-          description: "A prompt with arguments",
+          name: "warehouse_guide",
+          description: "Guide for querying data warehouses via the warehouse tool",
           arguments: [
             {
-              name: "temperature",
-              description: "Temperature setting",
-              required: true,
-            },
-            {
-              name: "style",
-              description: "Output style",
+              name: "connectorId",
+              description: "Optional connector ID to get dialect-specific guidance",
               required: false,
-            },
-          ],
-        },
-        {
-          name: PromptName.RESOURCE,
-          description: "A prompt that includes an embedded resource reference",
-          arguments: [
-            {
-              name: "resourceId",
-              description: "Resource ID to include (1-100)",
-              required: true,
             },
           ],
         },
@@ -363,467 +154,124 @@ export const createMcpServer = (): McpServerWrapper => {
   server.setRequestHandler(GetPromptRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
-    if (name === PromptName.SIMPLE) {
-      return {
-        messages: [
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: "This is a simple prompt without arguments.",
-            },
-          },
-        ],
-      };
+    if (name !== "warehouse_guide") {
+      throw new Error(`Unknown prompt: ${name}`);
     }
 
-    if (name === PromptName.COMPLEX) {
-      return {
-        messages: [
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: `This is a complex prompt with arguments: temperature=${args?.temperature}, style=${args?.style}`,
-            },
-          },
-          {
-            role: "assistant",
-            content: {
-              type: "text",
-              text: "I understand. You've provided a complex prompt with temperature and style arguments. How would you like me to proceed?",
-            },
-          },
-          {
-            role: "user",
-            content: {
-              type: "image",
-              data: MCP_TINY_IMAGE,
-              mimeType: "image/png",
-            },
-          },
-        ],
-      };
+    const warehouses = await getWarehouses();
+
+    let guide: string;
+    if (warehouses.length === 0) {
+      guide = "No warehouse connectors are configured for your team. Ask your team admin to add one in the 5pm control plane.";
+    } else {
+      const connectorLines = warehouses.map(
+        (w) => `- ${w.name} (${SQL_DIALECT[w.type] || w.type}) — id: ${w.id} — status: ${w.status}`,
+      );
+
+      const targetId = args?.connectorId as string | undefined;
+      const target = targetId ? warehouses.find((w) => w.id === targetId) : undefined;
+      const dialectHint = target
+        ? `\n\nTarget connector "${target.name}" uses ${SQL_DIALECT[target.type] || target.type}. Write SQL in that dialect.`
+        : "\n\nSpecify connectorId when calling the warehouse tool, and write SQL in the dialect matching the connector type.";
+
+      guide = [
+        "You have access to the following data warehouse connectors:",
+        "",
+        ...connectorLines,
+        dialectHint,
+        "",
+        'Call the "warehouse" tool with { sql, connectorId } to execute queries.',
+      ].join("\n");
     }
 
-    if (name === PromptName.RESOURCE) {
-      const resourceId = parseInt(args?.resourceId as string, 10);
-      if (isNaN(resourceId) || resourceId < 1 || resourceId > 100) {
-        throw new Error(
-          `Invalid resourceId: ${args?.resourceId}. Must be a number between 1 and 100.`
-        );
-      }
-
-      const resourceIndex = resourceId - 1;
-      const resource = ALL_RESOURCES[resourceIndex];
-
-      return {
-        messages: [
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: `This prompt includes Resource ${resourceId}. Please analyze the following resource:`,
-            },
-          },
-          {
-            role: "user",
-            content: {
-              type: "resource",
-              resource: resource,
-            },
-          },
-        ],
-      };
-    }
-
-    throw new Error(`Unknown prompt: ${name}`);
+    return {
+      messages: [
+        {
+          role: "user",
+          content: { type: "text", text: guide },
+        },
+      ],
+    };
   });
 
+  // ---------------------------------------------------------------------------
+  // Tools
+  // ---------------------------------------------------------------------------
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const tools: Tool[] = [
-      {
-        name: ToolName.ECHO,
-        description: "Echoes back the input",
-        inputSchema: toJsonSchema(EchoSchema),
-      },
-      {
-        name: ToolName.ADD,
-        description: "Adds two numbers",
-        inputSchema: toJsonSchema(AddSchema),
-      },
-      {
-        name: ToolName.LONG_RUNNING_OPERATION,
+    const tools: Tool[] = [];
+
+    if (isWarehouseAvailable()) {
+      const warehouses = await listWarehouses(userId);
+      const connectorList = warehouses.length > 0
+        ? warehouses.map((w) => `${w.name} (${w.type}) id:${w.id}`).join("; ")
+        : "none configured";
+
+      tools.push({
+        name: ToolName.WAREHOUSE,
         description:
-          "Demonstrates a long running operation with progress updates",
-        inputSchema: toJsonSchema(LongRunningOperationSchema),
-      },
-      {
-        name: ToolName.SAMPLE_LLM,
-        description: "Samples from an LLM using MCP's sampling feature",
-        inputSchema: toJsonSchema(SampleLLMSchema),
-      },
-      {
-        name: ToolName.GET_TINY_IMAGE,
-        description: "Returns the MCP_TINY_IMAGE",
-        inputSchema: toJsonSchema(GetTinyImageSchema),
-      },
-      {
-        name: ToolName.ANNOTATED_MESSAGE,
-        description:
-          "Demonstrates how annotations can be used to provide metadata about content",
-        inputSchema: toJsonSchema(AnnotatedMessageSchema),
-      },
-      {
-        name: ToolName.GET_RESOURCE_REFERENCE,
-        description:
-          "Returns a resource reference that can be used by MCP clients",
-        inputSchema: toJsonSchema(GetResourceReferenceSchema),
-      },
-      {
-        name: ToolName.ELICIT_INPUTS,
-        description:
-          "Elicitation test tool that demonstrates how to request user input with various field types",
-        inputSchema: { type: "object" , properties: {} },
-      },
-      {
-        name: ToolName.MCP_APPS_HELLO_WORLD,
-        description:
-          "Demonstrates MCP Apps - returns an interactive UI that runs in the client",
-        inputSchema: { type: "object", properties: {} },
-        _meta: { ui: { resourceUri: HELLO_WORLD_APP_URI } },
-      },
-    ];
+          `Execute a SQL query against a data warehouse. Available connectors: ${connectorList}`,
+        inputSchema: toJsonSchema(WarehouseQuerySchema),
+        _meta: { ui: { resourceUri: WAREHOUSE_APP_URI } },
+      });
+    }
 
     return { tools };
   });
 
-  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
-    if (name === ToolName.ECHO) {
-      const validatedArgs = EchoSchema.parse(args);
-      return {
-        content: [{ type: "text", text: `Echo: ${validatedArgs.message}` }],
-      };
-    }
+    if (name === ToolName.WAREHOUSE) {
+      const { sql, connectorId } = WarehouseQuerySchema.parse(args);
 
-    if (name === ToolName.ADD) {
-      const validatedArgs = AddSchema.parse(args);
-      const sum = validatedArgs.a + validatedArgs.b;
-      return {
-        content: [
-          {
-            type: "text",
-            text: `The sum of ${validatedArgs.a} and ${validatedArgs.b} is ${sum}.`,
-          },
-        ],
-      };
-    }
-
-    if (name === ToolName.LONG_RUNNING_OPERATION) {
-      const validatedArgs = LongRunningOperationSchema.parse(args);
-      const { duration, steps } = validatedArgs;
-      const stepDuration = duration / steps;
-      const progressToken = request.params._meta?.progressToken;
-
-      for (let i = 1; i < steps + 1; i++) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, stepDuration * 1000)
-        );
-
-        if (progressToken !== undefined) {
-          await server.notification({
-            method: "notifications/progress",
-            params: {
-              progress: i,
-              total: steps,
-              progressToken,
-            },
-          });
+      let resolvedId = connectorId;
+      if (!resolvedId) {
+        const warehouses = await listWarehouses(userId);
+        if (warehouses.length === 0) {
+          return {
+            content: [{ type: "text", text: "No warehouse connectors configured for your team." }],
+            isError: true,
+          };
         }
-      }
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Long running operation completed. Duration: ${duration} seconds, Steps: ${steps}.`,
-          },
-        ],
-      };
-    }
-
-    if (name === ToolName.SAMPLE_LLM) {
-      const validatedArgs = SampleLLMSchema.parse(args);
-      const { prompt, maxTokens } = validatedArgs;
-
-      const result = await requestSampling(
-        prompt,
-        ToolName.SAMPLE_LLM,
-        maxTokens
-      );
-      const contentArray = Array.isArray(result.content) ? result.content : [result.content];
-      const firstContent = contentArray[0];
-      const textContent = firstContent && "text" in firstContent ? firstContent.text : JSON.stringify(result.content);
-      return {
-        content: [
-          { type: "text", text: `LLM sampling result: ${textContent}` },
-        ],
-      };
-    }
-
-    if (name === ToolName.GET_TINY_IMAGE) {
-      GetTinyImageSchema.parse(args);
-      return {
-        content: [
-          {
-            type: "text",
-            text: "This is a tiny image:",
-          },
-          {
-            type: "image",
-            data: MCP_TINY_IMAGE,
-            mimeType: "image/png",
-          },
-          {
-            type: "text",
-            text: "The image above is the MCP tiny image.",
-          },
-        ],
-      };
-    }
-
-    if (name === ToolName.GET_RESOURCE_REFERENCE) {
-      const validatedArgs = GetResourceReferenceSchema.parse(args);
-      const resourceId = validatedArgs.resourceId;
-
-      const resourceIndex = resourceId - 1;
-      if (resourceIndex < 0 || resourceIndex >= ALL_RESOURCES.length) {
-        throw new Error(`Resource with ID ${resourceId} does not exist`);
-      }
-
-      const resource = ALL_RESOURCES[resourceIndex];
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Returning resource reference for Resource ${resourceId}:`,
-          },
-          {
-            type: "resource",
-            resource: resource,
-          },
-          {
-            type: "text",
-            text: `You can access this resource using the URI: ${resource.uri}`,
-          },
-        ],
-      };
-    }
-
-    if (name === ToolName.ANNOTATED_MESSAGE) {
-      const { messageType, includeImage } = AnnotatedMessageSchema.parse(args);
-
-      const content = [];
-
-      // Main message with different priorities/audiences based on type
-      if (messageType === "error") {
-        content.push({
-          type: "text",
-          text: "Error: Operation failed",
-          annotations: {
-            priority: 1.0, // Errors are highest priority
-            audience: ["user", "assistant"], // Both need to know about errors
-          },
-        });
-      } else if (messageType === "success") {
-        content.push({
-          type: "text",
-          text: "Operation completed successfully",
-          annotations: {
-            priority: 0.7, // Success messages are important but not critical
-            audience: ["user"], // Success mainly for user consumption
-          },
-        });
-      } else if (messageType === "debug") {
-        content.push({
-          type: "text",
-          text: "Debug: Cache hit ratio 0.95, latency 150ms",
-          annotations: {
-            priority: 0.3, // Debug info is low priority
-            audience: ["assistant"], // Technical details for assistant
-          },
-        });
-      }
-
-      // Optional image with its own annotations
-      if (includeImage) {
-        content.push({
-          type: "image",
-          data: MCP_TINY_IMAGE,
-          mimeType: "image/png",
-          annotations: {
-            priority: 0.5,
-            audience: ["user"], // Images primarily for user visualization
-          },
-        });
-      }
-
-      return { content };
-    }
-
-    if (name === ToolName.ELICIT_INPUTS) {
-      const result = await extra.sendRequest({
-        method: 'elicitation/create',
-        params: {
-          message: "Please provide inputs for the following fields:",
-          requestedSchema: {
-            type: "object",
-            properties: {
-              name: {
-                title: "Full Name",
-                type: "string",
-                description: "Your full, legal name",
-              },
-              check: {
-                title: "Agree to terms",
-                type: "boolean",
-                description: "A boolean check",
-              },
-              color: {
-                title: "Favorite Color",
-                type: "string",
-                description: "Favorite color (open text)",
-                default: "blue",
-              },
-              email: {
-                title: "Email Address",
-                type: "string",
-                format: "email",
-                description:
-                  "Your email address (will be verified, and never shared with anyone else)",
-              },
-              homepage: {
-                type: "string",
-                format: "uri",
-                description: "Homepage / personal site",
-              },
-              birthdate: {
-                title: "Birthdate",
-                type: "string",
-                format: "date",
-                description:
-                  "Your date of birth (will never be shared with anyone else)",
-              },
-              integer: {
-                title: "Favorite Integer",
-                type: "integer",
-                description:
-                  "Your favorite integer (do not give us your phone number, pin, or other sensitive info)",
-                minimum: 1,
-                maximum: 100,
-                default: 42,
-              },
-              number: {
-                title: "Favorite Number",
-                type: "number",
-                description: "Favorite number (there are no wrong answers)",
-                minimum: 0,
-                maximum: 1000,
-                default: 3.14,
-              },
-              petType: {
-                title: "Pet type",
-                type: "string",
-                enum: ["cats", "dogs", "birds", "fish", "reptiles"],
-                enumNames: ["Cats", "Dogs", "Birds", "Fish", "Reptiles"],
-                default: "dogs",
-                description: "Your favorite pet type",
-              },
-            },
-            required: ["name"],
-          },
+        if (warehouses.length > 1) {
+          const lines = warehouses.map(
+            (w) => `• ${w.name} (${w.type}) — id: ${w.id}`,
+          );
+          return {
+            content: [{
+              type: "text",
+              text: `Multiple connectors available. Please specify connectorId:\n${lines.join("\n")}`,
+            }],
+            isError: true,
+          };
         }
-      }, ElicitResultSchema, {timeout: 10 * 60 * 1000 /* 10 minutes */});
+        resolvedId = warehouses[0].id;
+      }
 
+      const result = await executeWarehouseQuery(userId, resolvedId, sql);
       return {
-        content: [
-          {
-            type: "text",
-            text: `Elicitation result: ${JSON.stringify(result, null, 2)}`,
-          },
-        ],
-      };
-    }
-
-    if (name === ToolName.MCP_APPS_HELLO_WORLD) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "If this client supports MCP Apps, an interactive UI should have rendered for the user.",
-          },
-        ],
-        structuredContent: {
-          greeting: "Hello from MCP Apps!",
-          timestamp: new Date().toISOString(),
-          features: ["interactive UI", "bidirectional communication", "theme support"],
-          stats: {
-            version: "1.0.0",
-            requestCount: Math.floor(Math.random() * 1000),
-          },
-        },
-        _meta: {
-          exampleKey: "exampleValue",
-          processed: true,
-        },
+        content: [{
+          type: "text",
+          text: JSON.stringify({ columns: result.columns, rows: result.rows, rowCount: result.rowCount }, null, 2),
+        }],
       };
     }
 
     throw new Error(`Unknown tool: ${name}`);
   });
 
-  server.setRequestHandler(CompleteRequestSchema, async (request) => {
-    const { ref, argument } = request.params;
-
-    if (ref.type === "ref/resource") {
-      const resourceId = ref.uri.split("/").pop();
-      if (!resourceId) return { completion: { values: [] } };
-
-      // Filter resource IDs that start with the input value
-      const values = EXAMPLE_COMPLETIONS.resourceId.filter((id) =>
-        id.startsWith(argument.value)
-      );
-      return { completion: { values, hasMore: false, total: values.length } };
-    }
-
-    if (ref.type === "ref/prompt") {
-      // Handle completion for prompt arguments
-      const completions =
-        EXAMPLE_COMPLETIONS[argument.name as keyof typeof EXAMPLE_COMPLETIONS];
-      if (!completions) return { completion: { values: [] } };
-
-      const values = completions.filter((value) =>
-        value.startsWith(argument.value)
-      );
-      return { completion: { values, hasMore: false, total: values.length } };
-    }
-
-    throw new Error(`Unknown reference type`);
-  });
-
+  // ---------------------------------------------------------------------------
+  // Logging
+  // ---------------------------------------------------------------------------
   server.setRequestHandler(SetLevelRequestSchema, async (request) => {
     const { level } = request.params;
     logLevel = level;
 
-    // Demonstrate different log levels
     await server.notification({
       method: "notifications/message",
       params: {
         level: "debug",
-        logger: "test-server",
+        logger: "5pm-mcp",
         data: `Logging level set to: ${logLevel}`,
       },
     });
@@ -831,14 +279,11 @@ export const createMcpServer = (): McpServerWrapper => {
     return {};
   });
 
-  const cleanup = async () => {
-    if (subsUpdateInterval) clearInterval(subsUpdateInterval);
-    if (logsUpdateInterval) clearInterval(logsUpdateInterval);
-    if (stdErrUpdateInterval) clearInterval(stdErrUpdateInterval);
-  };
+  // Suppress unused variable – logLevel is read by future log filtering
+  void logLevel;
+  void LOG_LEVELS;
+
+  const cleanup = () => {};
 
   return { server, cleanup };
 };
-
-const MCP_TINY_IMAGE =
-  "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";

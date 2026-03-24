@@ -27,7 +27,7 @@ describe('Redis Transport Integration', () => {
 
     it('should relay initialization request from client to server through Redis', async () => {
       // 1. Start the server listening to Redis
-      const { server, cleanup: serverCleanup } = createMcpServer();
+      const { server, cleanup: serverCleanup } = createMcpServer('00000000-0000-0000-0000-000000000000');
       const serverTransport = new ServerRedisTransport(sessionId);
       serverTransport.onclose = serverCleanup;
       await server.connect(serverTransport);
@@ -133,7 +133,7 @@ describe('Redis Transport Integration', () => {
 
     it('should handle tools/list request through Redis relay', async () => {
       // Set up server and mock client
-      const { server, cleanup: serverCleanup } = createMcpServer();
+      const { server, cleanup: serverCleanup } = createMcpServer('00000000-0000-0000-0000-000000000000');
       const serverTransport = new ServerRedisTransport(sessionId);
       serverTransport.onclose = serverCleanup;
       await server.connect(serverTransport);
@@ -187,7 +187,7 @@ describe('Redis Transport Integration', () => {
 
     it('should handle notifications through Redis relay', async () => {
       // Set up server and mock client
-      const { server, cleanup: serverCleanup } = createMcpServer();
+      const { server, cleanup: serverCleanup } = createMcpServer('00000000-0000-0000-0000-000000000000');
       const serverTransport = new ServerRedisTransport(sessionId);
       serverTransport.onclose = serverCleanup;
       await server.connect(serverTransport);
