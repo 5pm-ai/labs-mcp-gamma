@@ -33,8 +33,10 @@ export async function runPreflight(
   await reporter.writeLog(stageKey, "info", "Testing sink write access...");
   try {
     const testId = `__preflight_test_${Date.now()}`;
+    const testValues = new Array(embeddingDimensions).fill(0);
+    testValues[0] = 0.001;
     await sinkConnector.upsert(
-      [{ id: testId, values: new Array(embeddingDimensions).fill(0), metadata: { _preflight: true } }],
+      [{ id: testId, values: testValues, metadata: { _preflight: true } }],
     );
     await reporter.writeLog(stageKey, "info", "Sink write access confirmed");
   } catch (err) {
