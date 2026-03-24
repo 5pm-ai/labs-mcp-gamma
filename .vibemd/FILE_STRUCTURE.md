@@ -111,6 +111,17 @@ Multi-tenant warehouse query module. Strategy + registry pattern for connector e
 | `connectors/snowflake.ts` | Snowflake connector (self-registers) |
 | `connectors/clickhouse.ts` | ClickHouse connector (self-registers) |
 
+### `src/modules/sink/`
+
+Multi-tenant vector store query module. Same strategy + registry pattern as warehouse.
+
+| File | Purpose |
+|---|---|
+| `types.ts` | `SinkConnector` interface, `SinkResult`, `SinkMatch`, type enums, `SinkConnectorFactory` |
+| `registry.ts` | Map-based sink connector registry |
+| `service.ts` | `listSinks()`, `executeSinkQuery()` — orchestrator with RLS via `withUserContext` |
+| `connectors/pinecone.ts` | Pinecone connector (self-registers) |
+
 ### `src/apps/`
 
 | File | Purpose |
