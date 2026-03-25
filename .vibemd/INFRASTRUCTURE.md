@@ -51,6 +51,7 @@
 | gamma-allow-egress-internal | EGRESS | 1000 | ALLOW all | 10.10.0.0/16, 10.20.0.0/16 | all |
 | gamma-allow-health-checks | INGRESS | 1000 | ALLOW tcp | 35.191.0.0/16, 130.211.0.0/22 | tag: allow-hc |
 | gamma-allow-egress-internet | EGRESS | 1000 | ALLOW all | 0.0.0.0/0 | tag: allow-internet-egress |
+| gamma-allow-egress-internet-sn-app | EGRESS | 1000 | ALLOW all | 0.0.0.0/0 | SA: sa-ingest-worker, sa-mcp-server |
 | gamma-allow-egress-google-apis | EGRESS | 900 | ALLOW tcp:443 | 199.36.153.4/30, 199.36.153.8/30 | all |
 
 ## Secrets (Secret Manager)
