@@ -17,7 +17,7 @@
 | gamma-redis | Memorystore | Redis 7.2 (Basic, 1GB) | us-east4, private IP 10.20.1.3:6378 | persistent | braun | 2026-03-17 | TLS in-transit encryption enabled. No public IP. |
 | gamma-bastion | Compute Engine | Bastion host (e2-micro, Debian 12) | us-east4-a, 10.10.2.2 | persistent | braun | 2026-03-17 | No public IP. IAP SSH only. SA: sa-bastion |
 | gamma-docker | Artifact Registry | Docker image repository | us-east4 | persistent | braun | 2026-03-17 | IAM-gated, no public access |
-| gamma-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-03-18 | Ingress: internal-and-cloud-load-balancing. SA: sa-mcp-server. Image: mcp-server:v4 |
+| gamma-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-03-18 | Ingress: internal-and-cloud-load-balancing. SA: sa-mcp-server. Image: mcp-server:v5 |
 | db-migrate | Cloud Run Job | Database schema init / migrations | us-east4 | persistent | braun | 2026-03-17 | On-demand: `gcloud run jobs execute db-migrate` SA: sa-db-admin |
 | gamma-ingest-worker | Cloud Run Job | Metadata ingest pipeline (preflight → upsert) | us-east4 | persistent | braun | 2026-03-24 | No public ingress. SA: sa-ingest-worker. Dispatched by ctrl-api |
 | sa-ingest-worker | IAM Service Account | Runtime identity for ingest job | ai-5pm-labs.iam.gserviceaccount.com | persistent | braun | 2026-03-24 | See Service Accounts table for IAM bindings |
@@ -33,7 +33,7 @@
 
 | SA | Purpose | Key Roles |
 |---|---|---|
-| sa-mcp-server@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run MCP server | cloudsql.client, secretmanager.secretAccessor, redis.editor, artifactregistry.reader |
+| sa-mcp-server@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run MCP server + ctrl-api | cloudsql.client, secretmanager.secretAccessor, redis.editor, artifactregistry.reader, run.invoker |
 | sa-db-admin@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run Job (migrations) | cloudsql.client, secretmanager.secretAccessor, artifactregistry.reader |
 | sa-ingest-worker@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run Job (gamma-ingest-worker) | cloudsql.client, secretmanager.secretAccessor (openai-api-key), cloudkms.cryptoKeyDecrypter, artifactregistry.reader |
 | sa-bastion@ai-5pm-labs.iam.gserviceaccount.com | Bastion VM | compute.osLogin, artifactregistry.reader |
@@ -60,7 +60,8 @@
 | database-url | Postgres connection string (mcp_app) | sslmode=no-verify, private IP |
 | database-admin-url | Postgres connection string (postgres) | Used by db-migrate job only |
 | redis-tls-ca | Memorystore Redis server CA cert | Required for TLS connections |
-| openai-api-key | OpenAI API key for ingest embeddings | Accessor: sa-ingest-worker only |
+| openai-api-key | OpenAI API key for embeddings | Accessor: sa-ingest-worker, sa-mcp-server |
+| ingest-database-url | Postgres connection string (ingest_app) | sslmode=no-verify, private IP. Accessor: sa-ingest-worker |
 
 ## Environment Variables (Cloud Run: gamma-mcp)
 
