@@ -50,7 +50,11 @@ async function withRlsContext<T>(pool: pg.Pool, fn: (client: pg.PoolClient) => P
 async function main(): Promise<void> {
   console.log(`Ingest worker starting for run ${runId}, user ${userId}`);
 
-  const pool = new pg.Pool({ connectionString: databaseUrl });
+  const pool = new pg.Pool({
+    connectionString: databaseUrl,
+    ssl: databaseUrl!.includes("sslmode=no-verify") ? { rejectUnauthorized: false } : undefined,
+    connectionTimeoutMillis: 10000,
+  });
   pool.on("error", (err) => console.error("Pool error:", err));
 
   try {
