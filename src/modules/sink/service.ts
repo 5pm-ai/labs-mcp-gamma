@@ -125,8 +125,26 @@ export async function executeSinkTextQuery(
     throw new Error(`Sink connector "${row.name}" is in ${row.status} state`);
   }
 
-  const model = row.embedding_model || "text-embedding-3-small";
-  const dimensions = row.embedding_dimensions || 1536;
+  let model = row.embedding_model;
+  let dimensions = row.embedding_dimensions;
+
+  if (!model || !dimensions) {
+    const ingestRow = await withUserContext(userId, async (client) => {
+      const r = await client.query<{ embedding_model: string; embedding_dimensions: number }>(
+        "SELECT embedding_model, embedding_dimensions FROM ingests WHERE sink_connector_id = $1 ORDER BY created_at DESC LIMIT 1",
+        [connectorId],
+      );
+      return r.rows[0];
+    });
+    if (ingestRow) {
+      model = model || ingestRow.embedding_model;
+      dimensions = dimensions || ingestRow.embedding_dimensions;
+    }
+  }
+
+  if (!model || !dimensions) {
+    throw new Error("Sink has no embedding model configured and no ingests found. Set embedding_model and embedding_dimensions on the sink connector.");
+  }
 
   const embedder = new OpenAIEmbedder(openaiApiKey);
   const { vectors } = await embedder.embedBatch([query], model, dimensions);
