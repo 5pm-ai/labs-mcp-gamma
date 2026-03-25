@@ -48,7 +48,7 @@ class ClickHouseConnector implements WarehouseConnector {
 
   async listTables(schema: string): Promise<TableInfo[]> {
     const rows = await this.runQuery(
-      `SELECT name, total_rows, comment
+      `SELECT name, engine, total_rows, comment
        FROM system.tables
        WHERE database = '${schema.replace(/'/g, "\\'")}'
        AND is_temporary = 0
@@ -57,6 +57,7 @@ class ClickHouseConnector implements WarehouseConnector {
     return rows.map((r) => ({
       schema,
       table: r.name as string,
+      tableType: (r.engine as string) || undefined,
       rowCount: r.total_rows != null ? Number(r.total_rows) : undefined,
       comment: (r.comment as string) || undefined,
     }));

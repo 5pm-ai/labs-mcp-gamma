@@ -10,7 +10,8 @@ function buildTableDocument(
 ): string {
   const lines: string[] = [];
 
-  lines.push(`Table: ${table.schema}.${table.table}`);
+  const typeLabel = table.tableType ? `${table.tableType}` : "Table";
+  lines.push(`${typeLabel}: ${table.schema}.${table.table}`);
   if (table.comment) lines.push(`Description: ${table.comment}`);
   if (table.rowCount != null) lines.push(`Approximate rows: ${table.rowCount.toLocaleString()}`);
   lines.push("");

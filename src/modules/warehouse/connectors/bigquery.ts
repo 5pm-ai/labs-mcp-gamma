@@ -43,6 +43,7 @@ class BigQueryConnector implements WarehouseConnector {
     return tables.map((t) => ({
       schema,
       table: t.id!,
+      tableType: t.metadata?.type || undefined,
       rowCount: t.metadata?.numRows ? Number(t.metadata.numRows) : undefined,
       comment: t.metadata?.description || undefined,
     }));

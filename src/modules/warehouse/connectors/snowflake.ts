@@ -77,20 +77,35 @@ class SnowflakeConnector implements WarehouseConnector {
        WHERE SCHEMA_NAME NOT IN ('INFORMATION_SCHEMA')
        ORDER BY SCHEMA_NAME`,
     );
-    return rows.map((r) => ({ schema: r.SCHEMA_NAME as string }));
+    const schemas = rows.map((r) => ({ schema: r.SCHEMA_NAME as string }));
+
+    const showRows = await this.runQuery(
+      `SHOW SCHEMAS IN DATABASE ${this.database}`,
+    ).catch(() => [] as Record<string, unknown>[]);
+
+    const seen = new Set(schemas.map((s) => s.schema));
+    for (const r of showRows) {
+      const name = (r.name ?? r.NAME) as string;
+      if (name && name !== "INFORMATION_SCHEMA" && !seen.has(name)) {
+        schemas.push({ schema: name });
+        seen.add(name);
+      }
+    }
+
+    return schemas.sort((a, b) => a.schema.localeCompare(b.schema));
   }
 
   async listTables(schema: string): Promise<TableInfo[]> {
     const rows = await this.runQuery(
-      `SELECT TABLE_NAME, ROW_COUNT, COMMENT
+      `SELECT TABLE_NAME, TABLE_TYPE, ROW_COUNT, COMMENT
        FROM ${this.database}.INFORMATION_SCHEMA.TABLES
        WHERE TABLE_SCHEMA = '${schema.replace(/'/g, "''")}'
-       AND TABLE_TYPE = 'BASE TABLE'
        ORDER BY TABLE_NAME`,
     );
     return rows.map((r) => ({
       schema,
       table: r.TABLE_NAME as string,
+      tableType: (r.TABLE_TYPE as string) || undefined,
       rowCount: r.ROW_COUNT != null ? Number(r.ROW_COUNT) : undefined,
       comment: (r.COMMENT as string) || undefined,
     }));

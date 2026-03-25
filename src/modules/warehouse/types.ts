@@ -14,6 +14,7 @@ export interface SchemaInfo {
 export interface TableInfo {
   schema: string;
   table: string;
+  tableType?: string;
   rowCount?: number;
   comment?: string;
 }
