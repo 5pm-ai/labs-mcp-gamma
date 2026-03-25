@@ -58,7 +58,8 @@ function loadConfig(): Config {
     throw new Error('AUTH_SERVER_URL must be set when AUTH_MODE=external');
   }
 
-  if (!process.env.AUTH0_DOMAIN || !process.env.AUTH0_CLIENT_ID || !process.env.AUTH0_CLIENT_SECRET) {
+  const isWorker = !!process.env.INGEST_RUN_ID;
+  if (!isWorker && (!process.env.AUTH0_DOMAIN || !process.env.AUTH0_CLIENT_ID || !process.env.AUTH0_CLIENT_SECRET)) {
     throw new Error('AUTH0_DOMAIN, AUTH0_CLIENT_ID, and AUTH0_CLIENT_SECRET must be set');
   }
 
@@ -73,9 +74,9 @@ function loadConfig(): Config {
     },
 
     auth0: {
-      domain: process.env.AUTH0_DOMAIN,
-      clientId: process.env.AUTH0_CLIENT_ID,
-      clientSecret: process.env.AUTH0_CLIENT_SECRET,
+      domain: process.env.AUTH0_DOMAIN || '',
+      clientId: process.env.AUTH0_CLIENT_ID || '',
+      clientSecret: process.env.AUTH0_CLIENT_SECRET || '',
       audience: process.env.AUTH0_AUDIENCE,
     },
 
