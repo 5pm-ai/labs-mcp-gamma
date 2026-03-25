@@ -33,7 +33,7 @@
 
 | SA | Purpose | Key Roles |
 |---|---|---|
-| sa-mcp-server@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run MCP server + ctrl-api | cloudsql.client, secretmanager.secretAccessor, redis.editor, artifactregistry.reader, run.invoker |
+| sa-mcp-server@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run MCP server + ctrl-api | cloudsql.client, secretmanager.secretAccessor, redis.editor, artifactregistry.reader, run.invoker, run.developer |
 | sa-db-admin@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run Job (migrations) | cloudsql.client, secretmanager.secretAccessor, artifactregistry.reader |
 | sa-ingest-worker@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run Job (gamma-ingest-worker) | cloudsql.client, secretmanager.secretAccessor (openai-api-key), cloudkms.cryptoKeyDecrypter, artifactregistry.reader |
 | sa-bastion@ai-5pm-labs.iam.gserviceaccount.com | Bastion VM | compute.osLogin, artifactregistry.reader |
