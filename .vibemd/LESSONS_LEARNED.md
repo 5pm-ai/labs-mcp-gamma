@@ -164,3 +164,23 @@
 - Do not use `EventSource` for authenticated endpoints that require Bearer tokens.
 - When a browser API limitation forces credentials into URLs, the correct answer is to choose a different transport — not to work around it.
 - Polling authenticated REST endpoints is simpler, secure by default, and sufficient for use cases where 2-second latency is acceptable.
+
+---
+
+### [2026-03-25] Cloud Run Jobs with all-traffic VPC egress can't reach Google APIs without Cloud DNS
+
+**Context:** Ingest worker Cloud Run Job configured with `all-traffic` Direct VPC Egress on `sn-app`. KMS decrypt call timed out with `DEADLINE_EXCEEDED`.
+
+**Symptoms:** `Total timeout of API google.cloud.kms.v1.KeyManagementService exceeded 60000 milliseconds`. The MCP server (Cloud Run Service) on the same subnet calls KMS without issues.
+
+**Root Cause:** Cloud Run Services have built-in DNS resolution for Google APIs that routes through PGA automatically. Cloud Run Jobs with `all-traffic` VPC egress use the VPC's DNS resolution. Without a Cloud DNS private zone, `cloudkms.googleapis.com` resolved to public IPs. The deny-all-egress firewall blocked those, and the `gamma-allow-egress-google-apis` rule only allowed the PGA VIP range — which the public DNS didn't point to.
+
+**Resolution:**
+1. Created Cloud DNS private zone `googleapis-internal` on `gamma-vpc` mapping `*.googleapis.com` CNAME to `restricted.googleapis.com` and A records to `199.36.153.4/30` (restricted VIPs).
+2. Added `199.36.153.4/30` to the `gamma-allow-egress-google-apis` firewall rule (was only `199.36.153.8/30`).
+3. Kept `all-traffic` VPC egress so internet traffic routes through Cloud NAT with the static IP.
+
+**Prevention:**
+- When using `all-traffic` VPC egress with deny-all firewall, always create a Cloud DNS private zone for `googleapis.com` pointing to restricted or private VIPs.
+- Cloud Run Services and Cloud Run Jobs have different DNS behavior under VPC egress — don't assume Services' behavior transfers to Jobs.
+- Test Google API connectivity (KMS, Secret Manager) from a Job explicitly before deploying.

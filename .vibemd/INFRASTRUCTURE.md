@@ -23,6 +23,7 @@
 | sa-ingest-worker | IAM Service Account | Runtime identity for ingest job | ai-5pm-labs.iam.gserviceaccount.com | persistent | braun | 2026-03-24 | See Service Accounts table for IAM bindings |
 | ingest_app | Postgres role | RLS-scoped DB role for ingest worker | gamma-pg / mcp | persistent | braun | 2026-03-24 | No credential write access; see db migrations |
 | ingest-worker:v1 | Container image | Ingest job Docker image | Artifact Registry (gamma-docker) | persistent | braun | 2026-03-24 | Built from `Dockerfile.worker` |
+| googleapis-internal | Cloud DNS Zone | Private zone mapping *.googleapis.com to restricted VIPs (199.36.153.4/30) | gamma-vpc | persistent | braun | 2026-03-25 | Required for Cloud Run Jobs with all-traffic VPC egress to reach KMS/Secret Manager via PGA |
 | gamma-5pm-ai-origin | SSL Certificate | Cloudflare Origin CA (self-managed) | global, GCP | persistent | braun | 2026-03-17 | Wildcard *.5pm.ai, expires 2040-06-06 |
 | gamma-mcp-neg | Serverless NEG | Cloud Run -> LB bridge | us-east4 | persistent | braun | 2026-03-17 | Points to gamma-mcp Cloud Run service |
 | gamma-mcp-backend | Backend Service | LB backend | global | persistent | braun | 2026-03-17 | EXTERNAL_MANAGED scheme |
@@ -50,7 +51,7 @@
 | gamma-allow-egress-internal | EGRESS | 1000 | ALLOW all | 10.10.0.0/16, 10.20.0.0/16 | all |
 | gamma-allow-health-checks | INGRESS | 1000 | ALLOW tcp | 35.191.0.0/16, 130.211.0.0/22 | tag: allow-hc |
 | gamma-allow-egress-internet | EGRESS | 1000 | ALLOW all | 0.0.0.0/0 | tag: allow-internet-egress |
-| gamma-allow-egress-google-apis | EGRESS | 900 | ALLOW tcp:443 | 199.36.153.8/30 | all |
+| gamma-allow-egress-google-apis | EGRESS | 900 | ALLOW tcp:443 | 199.36.153.4/30, 199.36.153.8/30 | all |
 
 ## Secrets (Secret Manager)
 
