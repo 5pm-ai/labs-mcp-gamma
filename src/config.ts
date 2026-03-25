@@ -41,6 +41,11 @@ export interface Config {
     enabled: boolean;
     keyName?: string;
   };
+
+  openai: {
+    enabled: boolean;
+    apiKey?: string;
+  };
 }
 
 /**
@@ -89,6 +94,11 @@ function loadConfig(): Config {
     kms: {
       enabled: !!process.env.KMS_KEY_NAME,
       keyName: process.env.KMS_KEY_NAME,
+    },
+
+    openai: {
+      enabled: !!process.env.OPENAI_API_KEY,
+      apiKey: process.env.OPENAI_API_KEY,
     },
   };
 }

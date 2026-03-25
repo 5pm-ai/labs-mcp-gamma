@@ -17,7 +17,7 @@ import { config } from "../../../config.js";
 import { isPostgresReady } from "../../shared/postgres.js";
 import { listWarehouses, executeWarehouseQuery } from "../../warehouse/service.js";
 import type { WarehouseInfo } from "../../warehouse/service.js";
-import { listSinks, executeSinkQuery } from "../../sink/service.js";
+import { listSinks, executeSinkTextQuery } from "../../sink/service.js";
 import type { SinkInfo } from "../../sink/service.js";
 import { withUserContext } from "../../shared/postgres.js";
 
@@ -34,7 +34,7 @@ const WarehouseQuerySchema = z.object({
 });
 
 const SinkQuerySchema = z.object({
-  vector: z.array(z.number()).describe("Query vector for similarity search"),
+  query: z.string().describe("Natural language query to search the data catalog. Examples: 'customer orders', 'revenue tables', 'user accounts schema'"),
   topK: z.number().default(10).describe("Number of nearest neighbors to return"),
   connectorId: z.string().optional().describe("Sink connector ID. If omitted and only one connector exists, it will be used automatically."),
   namespace: z.string().optional().describe("Pinecone namespace to search within"),
@@ -404,23 +404,33 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
         ? warehouses.map((w) => `${w.name} (${w.type}) id:${w.id}`).join("; ")
         : "none configured";
 
+      const sinks = await listSinks(userId);
+      const catalog = sinks.length > 0 ? await getIngestCatalog() : [];
+      const hasCatalog = catalog.length > 0;
+
+      const whDesc = hasCatalog
+        ? `Execute a SQL statement against a data warehouse. IMPORTANT: Use the "sink" tool first to discover available schemas, tables, and columns before writing SQL. The sink contains an indexed catalog of the warehouse structure. Available connectors: ${connectorList}`
+        : `Execute a SQL statement against a data warehouse. Available connectors: ${connectorList}`;
+
       tools.push({
         name: ToolName.WAREHOUSE,
-        description:
-          `Execute a SQL query against a data warehouse. Available connectors: ${connectorList}`,
+        description: whDesc,
         inputSchema: toJsonSchema(WarehouseQuerySchema),
         _meta: { ui: { resourceUri: WAREHOUSE_APP_URI } },
       });
 
-      const sinks = await listSinks(userId);
       const sinkList = sinks.length > 0
         ? sinks.map((s) => `${s.name} (${s.type}) id:${s.id}`).join("; ")
         : "none configured";
 
+      const catalogSummary = hasCatalog
+        ? `. Indexed warehouses: ${catalog.map((c) => `${c.warehouseName} (${c.schemasDiscovered} schemas, ${c.tablesDiscovered} tables)`).join("; ")}`
+        : "";
+
       tools.push({
         name: ToolName.SINK,
         description:
-          `Query a vector store (semantic search). Available sinks: ${sinkList}`,
+          `Search the data catalog to discover database structure — schemas, tables, columns, and relationships. Use this tool to understand what data is available before querying a warehouse. Accepts a natural language query (e.g. "customer orders", "revenue by region"). Returns matching table descriptions with schema, column types, and foreign key relationships${catalogSummary}. Available sinks: ${sinkList}`,
         inputSchema: toJsonSchema(SinkQuerySchema),
       });
     }
@@ -468,7 +478,14 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     }
 
     if (name === ToolName.SINK) {
-      const { vector, topK, connectorId, namespace } = SinkQuerySchema.parse(args);
+      const { query, topK, connectorId, namespace } = SinkQuerySchema.parse(args);
+
+      if (!config.openai.apiKey) {
+        return {
+          content: [{ type: "text", text: "Sink text search unavailable: OPENAI_API_KEY not configured on the MCP server." }],
+          isError: true,
+        };
+      }
 
       let resolvedId = connectorId;
       if (!resolvedId) {
@@ -494,7 +511,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
         resolvedId = sinks[0].id;
       }
 
-      const result = await executeSinkQuery(userId, resolvedId, vector, topK, namespace);
+      const result = await executeSinkTextQuery(userId, resolvedId, query, topK, config.openai.apiKey, namespace);
       return {
         content: [{
           type: "text",
