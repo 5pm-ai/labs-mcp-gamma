@@ -82,7 +82,12 @@ UNIQUE: `(client_name, redirect_uris_hash)` — deduplication constraint
 | embedding_dimensions | INTEGER NOT NULL | Default 1536 |
 | status | TEXT NOT NULL | 'idle', 'running', 'error' |
 | last_run_id | UUID | Nullable, last completed/failed run |
+| deleted_at | TIMESTAMPTZ | Nullable. Non-NULL = archived (soft-delete, irreversible) |
+| archived_warehouse_name | TEXT | Snapshot of connector name at archive time |
+| archived_sink_name | TEXT | Snapshot of connector name at archive time |
 | created_at, updated_at | TIMESTAMPTZ | |
+
+Note: `warehouse_connector_id` and `sink_connector_id` are nullable — NULLed on archive so connector RESTRICT FKs don't block deletion. MCP ingest catalog query uses JOIN (not LEFT JOIN), so archived pipelines are naturally excluded from MCP resources.
 
 ### ingest_runs
 | Column | Type | Notes |
