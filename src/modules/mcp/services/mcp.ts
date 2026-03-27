@@ -387,25 +387,41 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
         ? `Execute a SQL statement against a data warehouse. IMPORTANT: Use the "sink" tool first to discover available schemas, tables, and columns before writing SQL. The sink contains an indexed catalog of the warehouse structure. Available connectors: ${connectorList}`
         : `Execute a SQL statement against a data warehouse. Available connectors: ${connectorList}`;
 
+      const whIds = warehouses.map((w) => w.id);
+      const whSchema = toJsonSchema(WarehouseQuerySchema);
+      if (whIds.length > 0 && whSchema.properties && typeof whSchema.properties === "object") {
+        (whSchema.properties as Record<string, Record<string, unknown>>).connectorId = {
+          type: "string",
+          description: `Warehouse connector ID. ${warehouses.map((w) => `"${w.id}" = ${w.name} (${w.type})`).join(", ")}`,
+          enum: whIds,
+        };
+      }
+
       tools.push({
         name: ToolName.WAREHOUSE,
         description: whDesc,
-        inputSchema: toJsonSchema(WarehouseQuerySchema),
+        inputSchema: whSchema,
       });
 
-      const sinkList = sinks.length > 0
-        ? sinks.map((s) => `${s.name} (${s.type}) id:${s.id}`).join("; ")
-        : "none configured";
-
+      const sinkIds = sinks.map((s) => s.id);
       const catalogSummary = hasCatalog
         ? `. Indexed warehouses: ${catalog.map((c) => `${c.warehouseName} (${c.schemasDiscovered} schemas, ${c.tablesDiscovered} tables)`).join("; ")}`
         : "";
 
+      const sinkSchema = toJsonSchema(SinkQuerySchema);
+      if (sinkIds.length > 0 && sinkSchema.properties && typeof sinkSchema.properties === "object") {
+        (sinkSchema.properties as Record<string, Record<string, unknown>>).connectorId = {
+          type: "string",
+          description: `Sink connector ID. ${sinks.map((s) => `"${s.id}" = ${s.name} (${s.type})`).join(", ")}`,
+          enum: sinkIds,
+        };
+      }
+
       tools.push({
         name: ToolName.SINK,
         description:
-          `Search the data catalog to discover database structure — schemas, tables, columns, and relationships. Use this tool to understand what data is available before querying a warehouse. Accepts a natural language query (e.g. "customer orders", "revenue by region"). Returns matching table descriptions with schema, column types, and foreign key relationships${catalogSummary}. Available sinks: ${sinkList}`,
-        inputSchema: toJsonSchema(SinkQuerySchema),
+          `Search the data catalog to discover database structure — schemas, tables, columns, and relationships. Use this tool to understand what data is available before querying a warehouse. Accepts a natural language query (e.g. "customer orders", "revenue by region"). Returns matching table descriptions with schema, column types, and foreign key relationships${catalogSummary}`,
+        inputSchema: sinkSchema,
       });
 
     }
