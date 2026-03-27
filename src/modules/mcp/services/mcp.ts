@@ -30,22 +30,25 @@ const toJsonSchema = (schema: z.ZodType<any>): ToolInput => {
 
 const WarehouseQuerySchema = z.object({
   sql: z.string().describe("SQL query to execute against the warehouse"),
-  connectorId: z.string().optional().describe("Warehouse connector ID. If omitted and only one connector exists, it will be used automatically."),
+  connectorId: z.string().describe("Warehouse connector ID (from tool description or warehouse://connectors resource)"),
 });
 
 const SinkQuerySchema = z.object({
   query: z.string().describe("Natural language query to search the data catalog. Examples: 'customer orders', 'revenue tables', 'user accounts schema'"),
   topK: z.number().default(10).describe("Number of nearest neighbors to return"),
-  connectorId: z.string().optional().describe("Sink connector ID. If omitted and only one connector exists, it will be used automatically."),
+  connectorId: z.string().describe("Sink connector ID (from tool description or sink://connectors resource)"),
   namespace: z.string().optional().describe("Pinecone namespace to search within"),
 });
 
 enum ToolName {
   WAREHOUSE = "warehouse",
   SINK = "sink",
+  EXPLORE_WAREHOUSE = "explore_warehouse",
+  EXPLORE_SINK = "explore_sink",
 }
 
 const WAREHOUSE_APP_URI = "ui://warehouse/app.html";
+const SINK_APP_URI = "ui://sink/app.html";
 const INGEST_CATALOG_URI = "ingest://catalog";
 
 interface IngestCatalogEntry {
@@ -182,7 +185,16 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
       resources.push({
         uri: WAREHOUSE_APP_URI,
         name: "5pm Warehouse App",
-        description: "Interactive SQL UI for warehouse queries. Use the sink tool first to discover available schemas and tables, then use this app for visual exploration and ad-hoc SQL.",
+        description: "Interactive SQL UI for warehouse queries. Used by the explore_warehouse tool.",
+        mimeType: "text/html;profile=mcp-app",
+      });
+    }
+
+    if (sinks.length > 0) {
+      resources.push({
+        uri: SINK_APP_URI,
+        name: "5pm Sink App",
+        description: "Interactive UI for data catalog search results. Used by the explore_sink tool.",
         mimeType: "text/html;profile=mcp-app",
       });
     }
@@ -228,6 +240,18 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     if (uri === WAREHOUSE_APP_URI) {
       const distDir = path.join(import.meta.dirname, "../../../apps");
       const html = await fs.readFile(path.join(distDir, "mcp-app.html"), "utf-8");
+      return {
+        contents: [{
+          uri,
+          mimeType: "text/html;profile=mcp-app",
+          text: html,
+        }],
+      };
+    }
+
+    if (uri === SINK_APP_URI) {
+      const distDir = path.join(import.meta.dirname, "../../../apps");
+      const html = await fs.readFile(path.join(distDir, "sink-app.html"), "utf-8");
       return {
         contents: [{
           uri,
@@ -416,7 +440,6 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
         name: ToolName.WAREHOUSE,
         description: whDesc,
         inputSchema: toJsonSchema(WarehouseQuerySchema),
-        _meta: { ui: { resourceUri: WAREHOUSE_APP_URI } },
       });
 
       const sinkList = sinks.length > 0
@@ -433,6 +456,24 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
           `Search the data catalog to discover database structure — schemas, tables, columns, and relationships. Use this tool to understand what data is available before querying a warehouse. Accepts a natural language query (e.g. "customer orders", "revenue by region"). Returns matching table descriptions with schema, column types, and foreign key relationships${catalogSummary}. Available sinks: ${sinkList}`,
         inputSchema: toJsonSchema(SinkQuerySchema),
       });
+
+      if (sinks.length > 0) {
+        tools.push({
+          name: ToolName.EXPLORE_SINK,
+          description: `Visual explorer for data catalog search results. Same as the sink tool but renders results in an interactive UI. Use to visually browse discovered schemas, tables, columns, and relationships. Available sinks: ${sinkList}`,
+          inputSchema: toJsonSchema(SinkQuerySchema),
+          _meta: { ui: { resourceUri: SINK_APP_URI } },
+        });
+      }
+
+      if (warehouses.length > 0) {
+        tools.push({
+          name: ToolName.EXPLORE_WAREHOUSE,
+          description: `Visual SQL explorer for warehouse query results. Same as the warehouse tool but renders results in an interactive table UI. Use after discovering tables via the sink tool. Available connectors: ${connectorList}`,
+          inputSchema: toJsonSchema(WarehouseQuerySchema),
+          _meta: { ui: { resourceUri: WAREHOUSE_APP_URI } },
+        });
+      }
     }
 
     return { tools };
@@ -441,34 +482,10 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
-    if (name === ToolName.WAREHOUSE) {
+    if (name === ToolName.WAREHOUSE || name === ToolName.EXPLORE_WAREHOUSE) {
       const { sql, connectorId } = WarehouseQuerySchema.parse(args);
 
-      let resolvedId = connectorId;
-      if (!resolvedId) {
-        const warehouses = await listWarehouses(userId);
-        if (warehouses.length === 0) {
-          return {
-            content: [{ type: "text", text: "No warehouse connectors configured for your team." }],
-            isError: true,
-          };
-        }
-        if (warehouses.length > 1) {
-          const lines = warehouses.map(
-            (w) => `• ${w.name} (${w.type}) — id: ${w.id}`,
-          );
-          return {
-            content: [{
-              type: "text",
-              text: `Multiple connectors available. Please specify connectorId:\n${lines.join("\n")}`,
-            }],
-            isError: true,
-          };
-        }
-        resolvedId = warehouses[0].id;
-      }
-
-      const result = await executeWarehouseQuery(userId, resolvedId, sql);
+      const result = await executeWarehouseQuery(userId, connectorId, sql);
       return {
         content: [{
           type: "text",
@@ -477,7 +494,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
       };
     }
 
-    if (name === ToolName.SINK) {
+    if (name === ToolName.SINK || name === ToolName.EXPLORE_SINK) {
       const { query, topK, connectorId, namespace } = SinkQuerySchema.parse(args);
 
       if (!config.openai.apiKey) {
@@ -487,31 +504,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
         };
       }
 
-      let resolvedId = connectorId;
-      if (!resolvedId) {
-        const sinks = await listSinks(userId);
-        if (sinks.length === 0) {
-          return {
-            content: [{ type: "text", text: "No sink connectors configured for your team." }],
-            isError: true,
-          };
-        }
-        if (sinks.length > 1) {
-          const lines = sinks.map(
-            (s) => `• ${s.name} (${s.type}) — id: ${s.id}`,
-          );
-          return {
-            content: [{
-              type: "text",
-              text: `Multiple sinks available. Please specify connectorId:\n${lines.join("\n")}`,
-            }],
-            isError: true,
-          };
-        }
-        resolvedId = sinks[0].id;
-      }
-
-      const result = await executeSinkTextQuery(userId, resolvedId, query, topK, config.openai.apiKey, namespace);
+      const result = await executeSinkTextQuery(userId, connectorId, query, topK, config.openai.apiKey, namespace);
       return {
         content: [{
           type: "text",
