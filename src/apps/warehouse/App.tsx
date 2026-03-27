@@ -42,7 +42,11 @@ function getErrorMessage(result: CallToolResult): string | null {
 
 function formatCell(value: unknown): string {
   if (value === null || value === undefined) return "";
-  if (typeof value === "object") return JSON.stringify(value);
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    if ("value" in obj && Object.keys(obj).length === 1) return formatCell(obj.value);
+    return JSON.stringify(value);
+  }
   return String(value);
 }
 
@@ -162,7 +166,6 @@ const s: Record<string, React.CSSProperties> = {
     padding: "1.25rem",
     background: "#111111",
     color: "#fefefe",
-    minHeight: "100vh",
     boxSizing: "border-box",
   },
   header: {
