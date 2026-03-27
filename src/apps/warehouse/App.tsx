@@ -23,6 +23,12 @@ function parseResult(result: CallToolResult): QueryResult | null {
   }
 }
 
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 function WarehouseApp() {
   const [sql, setSql] = useState<string | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
@@ -93,7 +99,7 @@ function WarehouseApp() {
                   {queryResult.rows.map((row, i) => (
                     <tr key={i}>
                       {queryResult.columns.map((col) => (
-                        <td key={col} style={s.td}>{String(row[col] ?? "")}</td>
+                        <td key={col} style={s.td}>{formatCell(row[col])}</td>
                       ))}
                     </tr>
                   ))}
