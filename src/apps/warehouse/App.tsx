@@ -11,16 +11,33 @@ interface QueryResult {
   rowCount: number;
 }
 
+function getResultText(result: CallToolResult): string | null {
+  const content = result.content;
+  if (!Array.isArray(content)) return null;
+  const item = content.find((c) => "text" in c);
+  if (!item || !("text" in item)) return null;
+  return item.text as string;
+}
+
 function parseResult(result: CallToolResult): QueryResult | null {
   try {
-    const content = result.content;
-    if (!Array.isArray(content)) return null;
-    const text = content.find((c) => "text" in c);
-    if (!text || !("text" in text)) return null;
-    return JSON.parse(text.text as string) as QueryResult;
+    const text = getResultText(result);
+    if (!text) return null;
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    if (!Array.isArray(parsed.columns) || !Array.isArray(parsed.rows)) return null;
+    return {
+      columns: parsed.columns as string[],
+      rows: parsed.rows as Record<string, unknown>[],
+      rowCount: typeof parsed.rowCount === "number" ? parsed.rowCount : (parsed.rows as unknown[]).length,
+    };
   } catch {
     return null;
   }
+}
+
+function getErrorMessage(result: CallToolResult): string | null {
+  if (!(result as Record<string, unknown>).isError) return null;
+  return getResultText(result);
 }
 
 function formatCell(value: unknown): string {
@@ -33,6 +50,7 @@ function WarehouseApp() {
   const [sql, setSql] = useState<string | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [rawResult, setRawResult] = useState<CallToolResult | null>(null);
+  const [toolError, setToolError] = useState<string | null>(null);
 
   const { app, error } = useApp({
     appInfo: IMPLEMENTATION,
@@ -41,10 +59,20 @@ function WarehouseApp() {
       app.ontoolinput = async (input) => {
         const args = input.arguments as Record<string, unknown> | undefined;
         setSql((args?.sql as string) ?? null);
+        setToolError(null);
+        setQueryResult(null);
+        setRawResult(null);
       };
       app.ontoolresult = async (result) => {
         setRawResult(result);
-        setQueryResult(parseResult(result));
+        const errMsg = getErrorMessage(result);
+        if (errMsg) {
+          setToolError(errMsg);
+          setQueryResult(null);
+        } else {
+          setToolError(null);
+          setQueryResult(parseResult(result));
+        }
       };
       app.onerror = (err) => console.error("[5pm Warehouse]", err);
     },
@@ -83,7 +111,9 @@ function WarehouseApp() {
 
       <section style={s.section}>
         <h2 style={s.h2}>Results</h2>
-        {queryResult ? (
+        {toolError ? (
+          <p style={s.error}>{toolError}</p>
+        ) : queryResult ? (
           <>
             <p style={s.meta}>{queryResult.rowCount} row{queryResult.rowCount !== 1 ? "s" : ""}</p>
             <div style={s.tableWrap}>

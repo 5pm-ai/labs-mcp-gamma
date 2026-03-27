@@ -430,7 +430,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
       tools.push({
         name: ToolName.SINK,
         description:
-          `Search the data catalog to discover database structure — schemas, tables, columns, and relationships. Use this tool to understand what data is available before querying a warehouse. Accepts a natural language query (e.g. "customer orders", "revenue by region"). Returns matching table descriptions with schema, column types, and foreign key relationships${catalogSummary}. Available sinks: ${sinkList}`,
+          `Search the data catalog to discover database structure — schemas, tables, columns, and relationships. BEFORE using this tool, read the "ingest://catalog" resource to see which warehouses have been indexed and the "sink://connectors" resource to get connector IDs. Accepts a natural language query (e.g. "customer orders", "revenue by region"). Returns matching table descriptions with schema, column types, and foreign key relationships${catalogSummary}. Available sinks: ${sinkList}`,
         inputSchema: toJsonSchema(SinkQuerySchema),
       });
     }
