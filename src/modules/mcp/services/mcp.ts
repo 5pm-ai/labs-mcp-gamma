@@ -182,7 +182,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
       resources.push({
         uri: WAREHOUSE_APP_URI,
         name: "5pm Warehouse App",
-        description: "Interactive UI for the warehouse tool",
+        description: "Interactive SQL UI for warehouse queries. Use the sink tool first to discover available schemas and tables, then use this app for visual exploration and ad-hoc SQL.",
         mimeType: "text/html;profile=mcp-app",
       });
     }
@@ -192,7 +192,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
       resources.push({
         uri: INGEST_CATALOG_URI,
         name: "Ingest Catalog",
-        description: "Summary-level semiotic topology manifest: ingested warehouses, schema/table/column counts, and warehouse-to-sink bindings",
+        description: "START HERE — Data topology manifest showing ingested warehouses, their schema/table/column counts, and warehouse-to-sink bindings. Read this first to understand what data is available, then use the sink tool to discover specific tables.",
         mimeType: "application/json",
       });
     }
