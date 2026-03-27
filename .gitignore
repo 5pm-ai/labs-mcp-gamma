@@ -139,3 +139,4 @@ dist
 *.p8
 *.pub
 rsa_key*
+snowflake_credentials.md
