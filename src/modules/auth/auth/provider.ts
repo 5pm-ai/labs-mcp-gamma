@@ -20,6 +20,7 @@ import {
 import { InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { logger } from '../../shared/logger.js';
 import { config } from '../../../config.js';
+import { renderRedirectPage } from '../helpers/redirect-page.js';
 
 /**
  * Implementation of the OAuthRegisteredClientsStore interface using the existing client registration system
@@ -74,7 +75,8 @@ export class FeatureReferenceAuthProvider implements OAuthServerProvider {
       auth0Url.searchParams.set('audience', config.auth0.audience);
     }
 
-    res.redirect(auth0Url.toString());
+    const targetUrl = auth0Url.toString();
+    res.status(200).send(renderRedirectPage(targetUrl, 'Redirecting to login…'));
   }
 
   async challengeForAuthorizationCode(client: OAuthClientInformationFull, authorizationCode: string): Promise<string> {

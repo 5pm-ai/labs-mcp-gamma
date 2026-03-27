@@ -4,6 +4,7 @@ import { generateMcpTokens, readPendingAuthorization, saveMcpInstallation, saveR
 import { McpInstallation } from "../types.js";
 import { logger } from "../../shared/logger.js";
 import { query } from "../../shared/postgres.js";
+import { renderRedirectPage } from "../helpers/redirect-page.js";
 
 /**
  * Upsert user in Postgres from Auth0 ID token claims.
@@ -150,5 +151,11 @@ export async function handleAuth0Callback(req: Request, res: Response) {
     : `${pendingAuth.redirectUri}?code=${mcpAuthorizationCode}`;
 
   logger.debug("Redirecting to MCP client callback", { redirectUrl });
-  res.redirect(redirectUrl);
+
+  const isCustomScheme = !redirectUrl.startsWith("http://") && !redirectUrl.startsWith("https://");
+  if (isCustomScheme) {
+    res.status(200).send(renderRedirectPage(redirectUrl, "Opening in Cursor…"));
+  } else {
+    res.redirect(redirectUrl);
+  }
 }

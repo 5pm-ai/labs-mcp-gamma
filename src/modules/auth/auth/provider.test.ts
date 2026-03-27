@@ -139,13 +139,13 @@ describe("FeatureReferenceAuthProvider", () => {
       
       await provider.authorize(client, params, res);
       
-      expect(res.redirect).toHaveBeenCalledWith(
-        expect.stringContaining('ai-5pm-labs.us.auth0.com/authorize')
-      );
-      const redirectUrl = (res.redirect as jest.Mock).mock.calls[0][0] as string;
-      expect(redirectUrl).toContain('response_type=code');
-      expect(redirectUrl).toContain('scope=openid+profile+email');
-      expect(redirectUrl).toContain('redirect_uri=');
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.send).toHaveBeenCalled();
+      const html = (res.send as jest.Mock).mock.calls[0][0] as string;
+      expect(html).toContain('ai-5pm-labs.us.auth0.com/authorize');
+      expect(html).toContain('response_type=code');
+      expect(html).toContain('scope=openid+profile+email');
+      expect(html).toContain('redirect_uri=');
     });
   });
   

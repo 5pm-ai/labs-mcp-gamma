@@ -184,3 +184,13 @@
 - When using `all-traffic` VPC egress with deny-all firewall, always create a Cloud DNS private zone for `googleapis.com` pointing to restricted or private VIPs.
 - Cloud Run Services and Cloud Run Jobs have different DNS behavior under VPC egress — don't assume Services' behavior transfers to Jobs.
 - Test Google API connectivity (KMS, Secret Manager) from a Job explicitly before deploying.
+
+---
+
+### [2026-03-27] OAuth callback 302 to custom URI scheme blocked by browsers
+**Context:** MCP OAuth flow ends with a 302 redirect to `cursor://anysphere.cursor-mcp/oauth/callback?code=...` to pass the authorization code back to Cursor.
+**Symptoms:** Users clicking "Connect" in Cursor saw a grey/blank page in the system browser. The MCP server-side flow completed correctly (code was generated), but Cursor never received the callback. Worked locally because Auth0 showed a consent dialog (user gesture); failed in production because Auth0 skipped consent (existing session) creating a fully automatic 302 chain.
+**Root Cause:** Browsers silently block navigation to custom URI schemes (`cursor://`, `vscode://`, etc.) when the entire redirect chain completes without user interaction. A chain of automatic 302s (authorize → Auth0 → callback → cursor://) has no user gesture, so the final custom-scheme hop is blocked.
+**Resolution:** Replaced bare 302 redirects with HTML interstitial pages (`renderRedirectPage`) at both the authorize→Auth0 step and the callback→cursor:// step. The page auto-redirects via JS and provides a clickable "Continue" button as fallback, giving the browser the user gesture it needs.
+**Prevention:** Never use a bare 302 to redirect to a custom URI scheme. Always serve an HTML page with a visible link/button. This applies to any OAuth flow where the final redirect targets a non-HTTP scheme (Cursor, VS Code, Electron apps, etc.).
+**Refs:** `src/modules/auth/auth/provider.ts`, `src/modules/auth/handlers/auth0-callback.ts`, `src/modules/auth/helpers/redirect-page.ts`
