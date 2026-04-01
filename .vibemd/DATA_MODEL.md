@@ -147,5 +147,5 @@ Note: `warehouse_connector_id` and `sink_connector_id` are nullable — NULLed o
 | Role | Access |
 |------|--------|
 | ingest_app | SELECT on warehouse_connectors, sink_connectors, team_members (permissive); SELECT+UPDATE on ingests; SELECT+INSERT+UPDATE on ingest_runs, ingest_run_stages; SELECT+INSERT on ingest_run_logs |
-| ctrl_app | Full CRUD on ingests, SELECT+INSERT+UPDATE on ingest_runs, SELECT on stages/logs |
+| ctrl_app | Full CRUD on ingests, SELECT+INSERT+UPDATE on ingest_runs, SELECT on stages/logs, **SELECT on oauth_clients** (platform admin analytics via `app.is_platform_admin` session var) |
 | mcp_app | SELECT on ingests, ingest_runs (read-only for tool awareness) |
