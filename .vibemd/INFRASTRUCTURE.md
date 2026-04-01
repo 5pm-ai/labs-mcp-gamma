@@ -17,7 +17,7 @@
 | gamma-redis | Memorystore | Redis 7.2 (Basic, 1GB) | us-east4, private IP 10.20.1.3:6378 | persistent | braun | 2026-03-17 | TLS in-transit encryption enabled. No public IP. |
 | gamma-bastion | Compute Engine | Bastion host (e2-micro, Debian 12) | us-east4-a, 10.10.2.2 | persistent | braun | 2026-03-17 | No public IP. IAP SSH only. SA: sa-bastion |
 | gamma-docker | Artifact Registry | Docker image repository | us-east4 | persistent | braun | 2026-03-17 | IAM-gated, no public access |
-| gamma-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-03-31 | Ingress: internal-and-cloud-load-balancing. SA: sa-mcp-server. Image: mcp-server:v9 |
+| gamma-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-04-01 | Ingress: internal-and-cloud-load-balancing. SA: sa-mcp-server. Image: mcp-server:v10 |
 | db-migrate | Cloud Run Job | Database schema init / migrations | us-east4 | persistent | braun | 2026-03-17 | On-demand: `gcloud run jobs execute db-migrate` SA: sa-db-admin |
 | gamma-ingest-worker | Cloud Run Job | Metadata ingest pipeline (preflight → upsert) | us-east4 | persistent | braun | 2026-03-24 | No public ingress. SA: sa-ingest-worker. Dispatched by ctrl-api |
 | sa-ingest-worker | IAM Service Account | Runtime identity for ingest job | ai-5pm-labs.iam.gserviceaccount.com | persistent | braun | 2026-03-24 | See Service Accounts table for IAM bindings |
