@@ -10,6 +10,9 @@ Cloudflare CDN/Proxy  (gamma.5pm.ai, A -> 34.54.83.204)
   │  HTTPS (Cloudflare Origin CA cert, Full SSL mode)
   ▼
 GCP Global External Application Load Balancer
+  │  Cloud Armor: gamma-waf-policy
+  │    ├── Cloudflare IP restriction (non-CF sources → 403)
+  │    └── OWASP WAF rules (preview mode — log only)
   │  Forwarding rule :443 -> HTTPS proxy -> URL map
   │  (HTTP :80 -> 301 redirect to HTTPS)
   ▼

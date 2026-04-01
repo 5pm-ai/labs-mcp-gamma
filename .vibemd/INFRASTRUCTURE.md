@@ -26,9 +26,10 @@
 | googleapis-internal | Cloud DNS Zone | Private zone mapping *.googleapis.com to restricted VIPs (199.36.153.4/30) | gamma-vpc | persistent | braun | 2026-03-25 | Required for Cloud Run Jobs with all-traffic VPC egress to reach KMS/Secret Manager via PGA |
 | gamma-5pm-ai-origin | SSL Certificate | Cloudflare Origin CA (self-managed) | global, GCP | persistent | braun | 2026-03-17 | Wildcard *.5pm.ai, expires 2040-06-06 |
 | gamma-mcp-neg | Serverless NEG | Cloud Run -> LB bridge | us-east4 | persistent | braun | 2026-03-17 | Points to gamma-mcp Cloud Run service |
-| gamma-mcp-backend | Backend Service | LB backend | global | persistent | braun | 2026-03-17 | EXTERNAL_MANAGED scheme |
+| gamma-mcp-backend | Backend Service | LB backend | global | persistent | braun | 2026-03-17 | EXTERNAL_MANAGED scheme. Cloud Armor: gamma-waf-policy |
 | gamma-mcp-urlmap | URL Map | HTTPS routing | global | persistent | braun | 2026-03-17 | Default route to gamma-mcp-backend |
 | gamma-mcp-http-redirect | URL Map | HTTP->HTTPS redirect | global | persistent | braun | 2026-03-17 | 301 redirect |
+| gamma-waf-policy | Cloud Armor Security Policy | WAF + origin restriction | global | persistent | braun | 2026-04-01 | Standard tier. OWASP rules in preview mode. Cloudflare IP restriction enforced. Attached to all 3 backend services. LB logging enabled at 100% sample rate. |
 
 ## Service Accounts
 
@@ -38,7 +39,6 @@
 | sa-db-admin@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run Job (migrations) | cloudsql.client, secretmanager.secretAccessor, artifactregistry.reader |
 | sa-ingest-worker@ai-5pm-labs.iam.gserviceaccount.com | Cloud Run Job (gamma-ingest-worker) | cloudsql.client, secretmanager.secretAccessor (openai-api-key), cloudkms.cryptoKeyDecrypter, artifactregistry.reader |
 | sa-bastion@ai-5pm-labs.iam.gserviceaccount.com | Bastion VM | compute.osLogin, artifactregistry.reader |
-| sa-egress@ai-5pm-labs.iam.gserviceaccount.com | Internet egress identity | (minimal, attach to workloads needing internet) |
 
 ## Firewall Rules
 
@@ -50,8 +50,7 @@
 | gamma-allow-internal | INGRESS | 1000 | ALLOW all | 10.10.0.0/16, 10.20.0.0/16 | all |
 | gamma-allow-egress-internal | EGRESS | 1000 | ALLOW all | 10.10.0.0/16, 10.20.0.0/16 | all |
 | gamma-allow-health-checks | INGRESS | 1000 | ALLOW tcp | 35.191.0.0/16, 130.211.0.0/22 | tag: allow-hc |
-| gamma-allow-egress-internet | EGRESS | 1000 | ALLOW all | 0.0.0.0/0 | tag: allow-internet-egress |
-| gamma-allow-egress-internet-sn-app | EGRESS | 1000 | ALLOW all | 0.0.0.0/0 | SA: sa-ingest-worker, sa-mcp-server |
+| gamma-allow-egress-internet-sn-app | EGRESS | 1000 | ALLOW tcp:443 | 0.0.0.0/0 | SA: sa-ingest-worker, sa-mcp-server |
 | gamma-allow-egress-google-apis | EGRESS | 900 | ALLOW tcp:443 | 199.36.153.4/30, 199.36.153.8/30 | all |
 
 ## Secrets (Secret Manager)

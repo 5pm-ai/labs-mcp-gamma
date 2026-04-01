@@ -35,6 +35,47 @@ Two-layer OAuth 2.1 architecture:
 - Auth0 Account Linking action merges identities with the same verified email
 - If the IdP changes, only the `users.auth_provider_id` mapping needs updating
 
+## Cloud Armor (WAF)
+
+GCP Cloud Armor security policy `gamma-waf-policy` (Standard tier) attached to all three LB backend services (`gamma-mcp-backend`, `gamma-ctrl-api-backend`, `gamma-ctrl-backend`).
+
+### Origin Restriction
+
+Only Cloudflare IPv4 ranges and GCP health-check probes (35.191.0.0/16, 130.211.0.0/22) are allowed at the LB. All other source IPs are denied with 403. This prevents direct-to-origin bypass of `34.54.83.204` — traffic must flow through Cloudflare.
+
+### OWASP WAF Rules (Preview Mode)
+
+Six preconfigured ModSecurity CRS rule sets are active in **preview mode** (log-only, no blocking). Monitor Cloud Armor logs for false positives before switching to enforce mode. Particular attention needed on `/mcp` and `/token` endpoints where JSON-RPC and OAuth payloads may trigger SQLi or XSS signatures.
+
+| Priority | Rule Set | Description |
+|---|---|---|
+| 1000 | xss-v33-stable | Cross-site scripting |
+| 1001 | sqli-v33-stable | SQL injection |
+| 1002 | lfi-v33-stable | Local file inclusion |
+| 1003 | rfi-v33-stable | Remote file inclusion |
+| 1004 | protocolattack-v33-stable | Protocol attacks (HTTP request smuggling, response splitting) |
+| 1005 | sessionfixation-v33-stable | Session fixation |
+
+### Edge Rate Limiting
+
+Not currently active at the Cloud Armor layer. Application-layer rate limiting via `express-rate-limit` is the primary mechanism (per-endpoint, per-IP). A Cloud Armor edge rate limit rule scoped to Cloudflare IPs can be added later if volumetric abuse is observed before reaching Cloud Run.
+
+### Monitoring
+
+LB logging is enabled at 100% sample rate on all three backend services. Cloud Armor logs are available in Cloud Logging under `resource.type="http_load_balancer"`. Filter by `jsonPayload.enforcedSecurityPolicy.name="gamma-waf-policy"`. Preview-mode WAF matches appear with `previewSecurityPolicy` instead of `enforcedSecurityPolicy`.
+
+### Cloudflare IP Maintenance
+
+The origin restriction allowlist uses a static set of Cloudflare IPv4 ranges. Cloudflare occasionally adds new ranges (published at `https://www.cloudflare.com/ips-v4/` and the API at `https://api.cloudflare.com/client/v4/ips`). If the policy falls behind, legitimate traffic is rejected with 403. Periodically verify the allowlist matches the current published ranges.
+
+### Internal Service-to-Service via LB
+
+The sandbox feature in ctrl-api connects to the MCP server at `MCP_BASE_URL/mcp`. In production this resolves through Cloudflare (`gamma.5pm.ai`), so traffic hairpins: ctrl-api → Cloud NAT → Cloudflare → LB → Cloud Armor → gamma-mcp. This is intentional — it lets the sandbox exercise the full end-to-end path users see. `MCP_BASE_URL` must always use the Cloudflare-proxied hostname, never the direct LB IP (`34.54.83.204`), or Cloud Armor's origin restriction will reject it.
+
+## Firewall Egress Model
+
+All internet egress uses **per-workload service account targeting** (not network tags). Each Cloud Run service/job has its own SA; the `gamma-allow-egress-internet-sn-app` firewall rule explicitly lists the SAs that need internet access (`sa-ingest-worker`, `sa-mcp-server`). To grant a new workload internet egress, add its SA to the rule. Internet egress is restricted to `tcp:443` (HTTPS only).
+
 ## Secrets Policy
 
 - Never commit secrets. `.env` is gitignored.
