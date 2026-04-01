@@ -33,6 +33,7 @@ Living documentation maintained alongside code.
 | `PROMPTS.md` | Reusable prompt templates |
 | `SECURITY.md` | Auth strategy, RLS, token management, race conditions |
 | `TECH_STACK.md` | Approved technologies and versions |
+| `TESTING.md` | Test suites, local and gamma e2e setup, DB roles |
 
 ## `src/`
 
