@@ -109,3 +109,12 @@ CREATE POLICY allow_all_users ON users FOR ALL TO mcp_app USING (true) WITH CHEC
 CREATE POLICY allow_all_teams ON teams FOR ALL TO mcp_app USING (true) WITH CHECK (true);
 CREATE POLICY allow_all_team_members ON team_members FOR ALL TO mcp_app USING (true) WITH CHECK (true);
 CREATE POLICY allow_all_oauth_clients ON oauth_clients FOR ALL TO mcp_app USING (true) WITH CHECK (true);
+
+-- =============================================================================
+-- oauth_clients_stats: non-sensitive view for cross-service analytics
+-- Exposes only timestamps needed for MCP client activity metrics.
+-- Owned by mcp_admin so ctrl_app never sees client_secret or registration_blob.
+-- =============================================================================
+CREATE OR REPLACE VIEW oauth_clients_stats AS
+    SELECT id, created_at, last_used_at
+    FROM oauth_clients;
