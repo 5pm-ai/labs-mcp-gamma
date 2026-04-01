@@ -9,8 +9,8 @@ Two-layer OAuth 2.1 architecture:
 
 ## Token Management
 
-- **Access tokens**: Opaque, 1-hour expiry, stored encrypted (AES-256-CBC) in Redis
-- **Refresh tokens**: Opaque, 7-day expiry, consumed atomically via Redis GETDEL to prevent rotation race conditions
+- **Access tokens**: Opaque, 24-hour expiry (aligned with Auth0 upstream `token_lifetime`), stored encrypted (AES-256-CBC) in Redis. MCP clients (Cursor, Claude Code) do not currently use the refresh_token grant, so this is the effective session lifetime.
+- **Refresh tokens**: Opaque, 30-day expiry, consumed atomically via Redis GETDEL to prevent rotation race conditions. Ready for clients that support the refresh_token grant.
 - **Authorization codes**: 10-minute TTL, single-use enforced with optimistic concurrency (SET...GET)
 - **Client registrations**: Stored in Postgres, deduplicated by `(client_name, redirect_uris_hash)` unique constraint
 

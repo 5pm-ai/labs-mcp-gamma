@@ -66,9 +66,13 @@ export function decryptString({
 }
 
 /**
- * Access token expiry time in seconds (1 hour)
+ * Access token expiry time in seconds (24 hours).
+ * Aligned with Auth0 upstream token_lifetime (86400s) so the MCP access token
+ * and the stored Auth0 access token expire at roughly the same time.
+ * MCP clients (Cursor, Claude Code) do not currently use refresh_token grants,
+ * so this value is the effective session lifetime for most users.
  */
-export const ACCESS_TOKEN_EXPIRY_SEC = 60 * 60;
+export const ACCESS_TOKEN_EXPIRY_SEC = 24 * 60 * 60;
 
 /**
  * Generates a complete set of MCP OAuth tokens.

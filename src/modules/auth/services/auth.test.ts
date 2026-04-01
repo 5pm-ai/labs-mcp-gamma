@@ -6,6 +6,7 @@ process.env.DATABASE_URL = '';
 process.env.AUTH0_DOMAIN = 'test.us.auth0.com';
 process.env.AUTH0_CLIENT_ID = 'test-client-id';
 process.env.AUTH0_CLIENT_SECRET = 'test-client-secret';
+import { ACCESS_TOKEN_EXPIRY_SEC } from "../auth/auth-core.js";
 import {
   decryptString,
   exchangeToken,
@@ -196,7 +197,7 @@ describe("auth utils", () => {
         mcpTokens: {
           access_token: accessToken,
           token_type: "Bearer",
-          expires_in: 3600,
+          expires_in: ACCESS_TOKEN_EXPIRY_SEC,
         },
         clientId: "client-id",
         issuedAt: Date.now() / 1000,
@@ -244,7 +245,7 @@ describe("auth utils", () => {
         mcpTokens: {
           access_token: accessToken,
           token_type: "Bearer",
-          expires_in: 3600,
+          expires_in: ACCESS_TOKEN_EXPIRY_SEC,
         },
         clientId: "client-id",
         issuedAt: Date.now() / 1000,
@@ -256,7 +257,7 @@ describe("auth utils", () => {
           mcpTokens: {
             access_token: accessToken,
             token_type: "Bearer",
-            expires_in: 3600,
+            expires_in: ACCESS_TOKEN_EXPIRY_SEC,
           },
           clientId: "client-id",
           issuedAt: Date.now() / 1000,

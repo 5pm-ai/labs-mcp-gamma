@@ -24,8 +24,8 @@ export const REDIS_EXPIRY_TIMES = {
   CLIENT_REGISTRATION: 30 * 24 * 60 * 60,  // 30 days - client app credentials
   PENDING_AUTHORIZATION: 10 * 60,          // 10 minutes - authorization code -> PendingAuthorization
   TOKEN_EXCHANGE: 10 * 60,                 // 10 minutes - authorization code -> MCP access token
-  UPSTREAM_INSTALLATION: 7 * 24 * 60 * 60, // 7 days - MCP access token -> UpstreamInstallation
-  REFRESH_TOKEN: 7 * 24 * 60 * 60,         // 7 days - MCP refresh token -> access token
+  UPSTREAM_INSTALLATION: 30 * 24 * 60 * 60, // 30 days - MCP access token -> UpstreamInstallation (must outlive access token + refresh window)
+  REFRESH_TOKEN: 30 * 24 * 60 * 60,         // 30 days - MCP refresh token -> access token (for clients that support refresh_token grant)
 } as const;
 
 /**

@@ -445,14 +445,14 @@ describe('Redis Transport', () => {
       jest.useRealTimers();
     });
 
-    it('should shutdown session after 5 minutes of inactivity', async () => {
+    it('should shutdown session after 30 minutes of inactivity', async () => {
       const transport = new ServerRedisTransport(sessionId);
       const shutdownSpy = jest.spyOn(mockRedis, 'publish');
       
       await transport.start();
 
-      // Fast-forward time by 5 minutes
-      jest.advanceTimersByTime(5 * 60 * 1000);
+      // Fast-forward time by 30 minutes
+      jest.advanceTimersByTime(30 * 60 * 1000);
 
       // Should have published shutdown control message
       expect(shutdownSpy).toHaveBeenCalledWith(
@@ -470,8 +470,8 @@ describe('Redis Transport', () => {
       
       await transport.start();
 
-      // Fast-forward 4 minutes
-      jest.advanceTimersByTime(4 * 60 * 1000);
+      // Fast-forward 20 minutes (within 30-min timeout)
+      jest.advanceTimersByTime(20 * 60 * 1000);
 
       // Manually publish a message to trigger the subscription handler
       const testMessage = { jsonrpc: '2.0', method: 'ping' };
@@ -493,17 +493,17 @@ describe('Redis Transport', () => {
       const shutdownSpy = jest.spyOn(mockRedis, 'publish');
       shutdownSpy.mockClear();
 
-      // Fast-forward 4 more minutes (total 8, but only 4 since last message)
-      jest.advanceTimersByTime(4 * 60 * 1000);
+      // Fast-forward 20 more minutes (total 40, but only 20 since last message)
+      jest.advanceTimersByTime(20 * 60 * 1000);
 
-      // Should not have shutdown yet
+      // Should not have shutdown yet (only 20 min since last activity, timeout is 30)
       expect(shutdownSpy).not.toHaveBeenCalledWith(
         `mcp:control:${sessionId}`,
         expect.stringContaining('"action":"SHUTDOWN"')
       );
 
-      // Fast-forward 2 more minutes to exceed timeout
-      jest.advanceTimersByTime(2 * 60 * 1000);
+      // Fast-forward 11 more minutes to exceed 30-min timeout
+      jest.advanceTimersByTime(11 * 60 * 1000);
 
       // Now should have shutdown
       expect(shutdownSpy).toHaveBeenCalledWith(

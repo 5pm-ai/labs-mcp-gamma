@@ -7,6 +7,7 @@ import { MockRedisClient, setRedisClient } from "../../shared/redis.js";
 import { McpInstallation, PendingAuthorization, TokenExchange } from "../types.js";
 import { FeatureReferenceAuthProvider, FeatureReferenceOAuthClientsStore } from "./provider.js";
 import * as authService from "../services/auth.js";
+import { ACCESS_TOKEN_EXPIRY_SEC } from "./auth-core.js";
 
 // Force Redis-only mode in tests (no Postgres) and provide required Auth0 env vars
 process.env.DATABASE_URL = '';
@@ -44,7 +45,7 @@ function getMockAuthValues() {
     access_token: authService.generateToken(),
     refresh_token: authService.generateToken(),
     token_type: "bearer",
-    expires_in: 3600,
+    expires_in: ACCESS_TOKEN_EXPIRY_SEC,
   };
   const mcpInstallation: McpInstallation = {
     auth0Installation: {
@@ -56,7 +57,7 @@ function getMockAuthValues() {
       access_token: accessToken,
       token_type: "Bearer",
       refresh_token: authService.generateToken(),
-      expires_in: 3600,
+      expires_in: ACCESS_TOKEN_EXPIRY_SEC,
     },
     clientId: client.client_id,
     issuedAt: Date.now() / 1000,
@@ -246,7 +247,7 @@ describe("FeatureReferenceAuthProvider", () => {
       // Should return new tokens
       expect(result).toHaveProperty('access_token');
       expect(result).toHaveProperty('refresh_token');
-      expect(result).toHaveProperty('expires_in', 3600);
+      expect(result).toHaveProperty('expires_in', ACCESS_TOKEN_EXPIRY_SEC);
       expect(result).toHaveProperty('token_type', 'Bearer');
     });
     
@@ -285,7 +286,7 @@ describe("FeatureReferenceAuthProvider", () => {
         mcpTokens: {
           access_token: accessToken,
           token_type: "Bearer",
-          expires_in: 3600,
+          expires_in: ACCESS_TOKEN_EXPIRY_SEC,
         },
         clientId: "different-client-id",
         issuedAt: Date.now() / 1000,
@@ -322,7 +323,7 @@ describe("FeatureReferenceAuthProvider", () => {
         mcpTokens: {
           access_token: accessToken,
           token_type: "Bearer",
-          expires_in: 3600,
+          expires_in: ACCESS_TOKEN_EXPIRY_SEC,
         },
         clientId: "client-id",
         issuedAt: Date.now() / 1000,
@@ -392,7 +393,7 @@ describe("FeatureReferenceAuthProvider", () => {
         mcpTokens: {
           access_token: accessToken,
           token_type: "Bearer",
-          expires_in: 3600,
+          expires_in: ACCESS_TOKEN_EXPIRY_SEC,
         },
         clientId: client.client_id,
         issuedAt: Date.now() / 1000,

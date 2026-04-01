@@ -63,9 +63,9 @@ UNIQUE: `(client_name, redirect_uris_hash)` — deduplication constraint
 |---|---|---|
 | `auth:pending:` | Pending authorization (PKCE flow) | 10 min |
 | `auth:exch:` | Authorization code -> access token | 10 min |
-| `auth:installation:` | Access token -> McpInstallation | 7 days |
-| `auth:refresh:` | Refresh token -> access token | 7 days |
-| `session:{id}:owner` | Session ownership | Session lifetime |
+| `auth:installation:` | Access token -> McpInstallation | 30 days |
+| `auth:refresh:` | Refresh token -> access token | 30 days |
+| `session:{id}:owner` | Session ownership | 1 hour (TTL, refreshed on activity) |
 | `mcp:shttp:*` | Streamable HTTP pub/sub | Session lifetime |
 
 ## Ingest Tables (defined in labs-saas-ctrl/db/init.sql, shared Postgres)

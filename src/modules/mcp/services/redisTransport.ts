@@ -69,9 +69,11 @@ export async function isLive(sessionId: string): Promise<boolean> {
   return numSubs > 0;
 }
 
+const SESSION_OWNER_TTL_SEC = 60 * 60; // 1 hour — longer than inactivity timeout so the key outlives the session, but not forever
+
 export async function setSessionOwner(sessionId: string, userId: string): Promise<void> {
   logger.debug('Setting session owner', { sessionId, userId });
-  await redisClient.set(`session:${sessionId}:owner`, userId);
+  await redisClient.set(`session:${sessionId}:owner`, userId, { EX: SESSION_OWNER_TTL_SEC });
 }
 
 export async function getSessionOwner(sessionId: string): Promise<string | null> {
@@ -183,7 +185,7 @@ export class ServerRedisTransport implements Transport {
   private serverCleanup?: (() => Promise<void>);
   private shouldShutdown = false;
   private inactivityTimeout?: NodeJS.Timeout;
-  private readonly INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+  private readonly INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
   onclose?: (() => void) | undefined;
   onerror?: ((error: Error) => void) | undefined;
@@ -195,12 +197,13 @@ export class ServerRedisTransport implements Transport {
   }
 
   private resetInactivityTimer(): void {
-    // Clear existing timeout if any
     if (this.inactivityTimeout) {
       clearTimeout(this.inactivityTimeout);
     }
 
-    // Set new timeout
+    // Keep the session owner key alive while the session is active
+    void redisClient.expire(`session:${this._sessionId}:owner`, SESSION_OWNER_TTL_SEC);
+
     this.inactivityTimeout = setTimeout(() => {
       logger.info('Session timed out due to inactivity', {
         sessionId: this._sessionId,
