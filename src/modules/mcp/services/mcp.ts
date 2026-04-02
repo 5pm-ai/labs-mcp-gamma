@@ -121,21 +121,10 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     if (isPostgresReady()) {
       const scope = await resolveUserScope(userId);
       if (scope !== null && scope.columns.length > 0) {
-        const scopedWhIds = new Set(scope.columns.map((c) => c.connectorId));
-        warehouses = warehouses.filter((w) => scopedWhIds.has(w.id));
-        const scopedSinkIds = new Set<string>();
-        try {
-          const sinkResult = await withUserContext(userId, async (client) => {
-            return client.query<{ sink_connector_id: string }>(
-              `SELECT DISTINCT sink_connector_id FROM ingests
-               WHERE warehouse_connector_id = ANY($1)
-               AND deleted_at IS NULL AND sink_connector_id IS NOT NULL`,
-              [[...scopedWhIds]],
-            );
-          });
-          for (const r of sinkResult.rows) scopedSinkIds.add(r.sink_connector_id);
-        } catch { /* best effort */ }
-        if (scopedSinkIds.size > 0) sinks = sinks.filter((s) => scopedSinkIds.has(s.id));
+        const whSet = new Set(scope.warehouseConnectorIds);
+        const sinkSet = new Set(scope.sinkConnectorIds);
+        warehouses = warehouses.filter((w) => whSet.has(w.id));
+        sinks = sinks.filter((s) => sinkSet.has(s.id));
       } else if (scope !== null && scope.columns.length === 0) {
         warehouses = [];
         sinks = [];
@@ -302,8 +291,8 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
       if (isPostgresReady()) {
         const scope = await resolveUserScope(userId);
         if (scope !== null && scope.columns.length > 0) {
-          const scopedWhIds = new Set(scope.columns.map((c) => c.connectorId));
-          catalog = catalog.filter((c) => scopedWhIds.has(c.warehouseConnectorId ?? ""));
+          const whSet = new Set(scope.warehouseConnectorIds);
+          catalog = catalog.filter((c) => whSet.has(c.warehouseConnectorId ?? ""));
         } else if (scope !== null && scope.columns.length === 0) {
           catalog = [];
         }
@@ -598,14 +587,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
               isError: true,
             };
           }
-          const warehouseIds = await withUserContext(userId, async (client) => {
-            const r = await client.query<{ warehouse_connector_id: string }>(
-              "SELECT DISTINCT warehouse_connector_id FROM ingests WHERE sink_connector_id = $1 AND deleted_at IS NULL AND warehouse_connector_id IS NOT NULL",
-              [connectorId],
-            );
-            return r.rows.map((row) => row.warehouse_connector_id);
-          });
-          sinkFilter = buildSinkFilter(scope, warehouseIds);
+          sinkFilter = buildSinkFilter(scope);
         }
       }
 

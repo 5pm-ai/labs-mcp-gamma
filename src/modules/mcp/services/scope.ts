@@ -3,6 +3,8 @@ import { withUserContext } from "../../shared/postgres.js";
 export interface UserScope {
   scopeId: string;
   scopeName: string;
+  warehouseConnectorIds: string[];
+  sinkConnectorIds: string[];
   columns: Array<{
     connectorId: string;
     schemaName: string;
@@ -35,6 +37,24 @@ export async function resolveUserScope(userId: string): Promise<UserScope | null
     );
     const scopeName = scopeMeta.rows[0]?.name ?? "";
 
+    const ingestRows = await client.query<{
+      warehouse_connector_id: string | null;
+      sink_connector_id: string | null;
+    }>(
+      `SELECT i.warehouse_connector_id, i.sink_connector_id
+       FROM scope_ingests si
+       JOIN ingests i ON i.id = si.ingest_id
+       WHERE si.scope_id = $1 AND i.deleted_at IS NULL`,
+      [scopeId],
+    );
+
+    const whIds = new Set<string>();
+    const sinkIds = new Set<string>();
+    for (const row of ingestRows.rows) {
+      if (row.warehouse_connector_id) whIds.add(row.warehouse_connector_id);
+      if (row.sink_connector_id) sinkIds.add(row.sink_connector_id);
+    }
+
     const cols = await client.query<{
       connector_id: string; schema_name: string; table_name: string; column_name: string;
     }>(
@@ -45,6 +65,8 @@ export async function resolveUserScope(userId: string): Promise<UserScope | null
     return {
       scopeId,
       scopeName,
+      warehouseConnectorIds: [...whIds],
+      sinkConnectorIds: [...sinkIds],
       columns: cols.rows.map((r) => ({
         connectorId: r.connector_id,
         schemaName: r.schema_name,
@@ -57,25 +79,15 @@ export async function resolveUserScope(userId: string): Promise<UserScope | null
   return result;
 }
 
-export function buildSinkFilter(scope: UserScope, warehouseConnectorIds: string[]): Record<string, unknown> {
+export function buildSinkFilter(scope: UserScope): Record<string, unknown> {
   const allowedColumns = scope.columns
-    .filter((c) => warehouseConnectorIds.includes(c.connectorId))
+    .filter((c) => scope.warehouseConnectorIds.includes(c.connectorId))
     .map((c) => c.columnName);
 
   if (allowedColumns.length === 0) return { columns: { $in: ["__DENY_ALL__"] } };
 
   const unique = [...new Set(allowedColumns)];
   return { columns: { $in: unique } };
-}
-
-export function getAllowedColumnsForConnector(scope: UserScope, connectorId: string): Set<string> {
-  const allowed = new Set<string>();
-  for (const col of scope.columns) {
-    if (col.connectorId === connectorId) {
-      allowed.add(`${col.schemaName}.${col.tableName}.${col.columnName}`);
-    }
-  }
-  return allowed;
 }
 
 export function getConnectorColumnsLookup(scope: UserScope, connectorId: string): Map<string, Set<string>> {
