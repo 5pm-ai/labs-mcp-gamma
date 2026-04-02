@@ -445,14 +445,14 @@ describe('Redis Transport', () => {
       jest.useRealTimers();
     });
 
-    it('should shutdown session after 30 minutes of inactivity', async () => {
+    it('should shutdown session after 24 hours of inactivity', async () => {
       const transport = new ServerRedisTransport(sessionId);
       const shutdownSpy = jest.spyOn(mockRedis, 'publish');
       
       await transport.start();
 
-      // Fast-forward time by 30 minutes
-      jest.advanceTimersByTime(30 * 60 * 1000);
+      // Fast-forward time by 24 hours
+      jest.advanceTimersByTime(24 * 60 * 60 * 1000);
 
       // Should have published shutdown control message
       expect(shutdownSpy).toHaveBeenCalledWith(
@@ -470,8 +470,8 @@ describe('Redis Transport', () => {
       
       await transport.start();
 
-      // Fast-forward 20 minutes (within 30-min timeout)
-      jest.advanceTimersByTime(20 * 60 * 1000);
+      // Fast-forward 12 hours (within 24h timeout)
+      jest.advanceTimersByTime(12 * 60 * 60 * 1000);
 
       // Manually publish a message to trigger the subscription handler
       const testMessage = { jsonrpc: '2.0', method: 'ping' };
@@ -493,17 +493,17 @@ describe('Redis Transport', () => {
       const shutdownSpy = jest.spyOn(mockRedis, 'publish');
       shutdownSpy.mockClear();
 
-      // Fast-forward 20 more minutes (total 40, but only 20 since last message)
-      jest.advanceTimersByTime(20 * 60 * 1000);
+      // Fast-forward 12 more hours (total 24h, but only 12h since last message)
+      jest.advanceTimersByTime(12 * 60 * 60 * 1000);
 
-      // Should not have shutdown yet (only 20 min since last activity, timeout is 30)
+      // Should not have shutdown yet (only 12h since last activity, timeout is 24h)
       expect(shutdownSpy).not.toHaveBeenCalledWith(
         `mcp:control:${sessionId}`,
         expect.stringContaining('"action":"SHUTDOWN"')
       );
 
-      // Fast-forward 11 more minutes to exceed 30-min timeout
-      jest.advanceTimersByTime(11 * 60 * 1000);
+      // Fast-forward 13 more hours to exceed 24h timeout
+      jest.advanceTimersByTime(13 * 60 * 60 * 1000);
 
       // Now should have shutdown
       expect(shutdownSpy).toHaveBeenCalledWith(
@@ -523,8 +523,8 @@ describe('Redis Transport', () => {
       // Close transport before timeout
       await transport.close();
 
-      // Fast-forward past timeout
-      jest.advanceTimersByTime(10 * 60 * 1000);
+      // Fast-forward past 24h timeout
+      jest.advanceTimersByTime(25 * 60 * 60 * 1000);
 
       // Should not have triggered shutdown
       expect(shutdownSpy).not.toHaveBeenCalledWith(

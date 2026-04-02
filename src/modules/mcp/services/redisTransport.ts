@@ -69,7 +69,7 @@ export async function isLive(sessionId: string): Promise<boolean> {
   return numSubs > 0;
 }
 
-const SESSION_OWNER_TTL_SEC = 60 * 60; // 1 hour — longer than inactivity timeout so the key outlives the session, but not forever
+const SESSION_OWNER_TTL_SEC = 25 * 60 * 60; // 25 hours — slightly longer than the 24h inactivity timeout so the key outlives the session
 
 export async function setSessionOwner(sessionId: string, userId: string): Promise<void> {
   logger.debug('Setting session owner', { sessionId, userId });
@@ -185,7 +185,7 @@ export class ServerRedisTransport implements Transport {
   private serverCleanup?: (() => Promise<void>);
   private shouldShutdown = false;
   private inactivityTimeout?: NodeJS.Timeout;
-  private readonly INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+  private readonly INACTIVITY_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours — matches ACCESS_TOKEN_EXPIRY_SEC so sessions live until the token expires
 
   onclose?: (() => void) | undefined;
   onerror?: ((error: Error) => void) | undefined;

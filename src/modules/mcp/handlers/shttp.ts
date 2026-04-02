@@ -1,7 +1,7 @@
 import { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { Request, Response } from "express";
-import { getShttpTransport, isSessionOwnedBy, redisRelayToMcpServer, ServerRedisTransport, setSessionOwner, shutdownSession } from "../services/redisTransport.js";
+import { getShttpTransport, isLive, redisRelayToMcpServer, ServerRedisTransport, setSessionOwner, shutdownSession, validateSessionOwnership } from "../services/redisTransport.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID } from "crypto";
 import { createMcpServer } from "../services/mcp.js";
@@ -78,9 +78,25 @@ export async function handleStreamableHTTP(req: Request, res: Response) {
 
     const isGetRequest = req.method === 'GET';
 
-    // incorrect session for the authed user, return 401
     if (sessionId) {
-      if (!(await isSessionOwnedBy(sessionId, userId))) {
+      const live = await isLive(sessionId);
+      if (!live) {
+        logger.info('Session not live, returning 404 so client can re-initialize', {
+          sessionId,
+          userId,
+          requestMethod: req.method
+        });
+        res.status(404).json({
+          "jsonrpc": "2.0",
+          "id": null,
+          "error": {
+            "code": -32001,
+            "message": "Session expired or not found"
+          }
+        });
+        return;
+      }
+      if (!(await validateSessionOwnership(sessionId, userId))) {
         logger.warning('Session ownership mismatch', {
           sessionId,
           userId,
@@ -90,8 +106,8 @@ export async function handleStreamableHTTP(req: Request, res: Response) {
           "jsonrpc": "2.0",
           "id": null,
           "error": {
-            "code": -32001,
-            "message": "Session not found or access denied"
+            "code": -32002,
+            "message": "Access denied"
           }
         });
         return;
