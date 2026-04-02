@@ -26,7 +26,7 @@ export async function resolveUserScope(userId: string): Promise<UserScope | null
       "SELECT scope_id FROM scope_members WHERE user_id = $1",
       [userId],
     );
-    if (scopeRow.rows.length === 0) return { scopeId: "", scopeName: "", columns: [] };
+    if (scopeRow.rows.length === 0) return null; // unscoped = unrestricted
 
     const scopeId = scopeRow.rows[0].scope_id;
     const scopeMeta = await client.query<{ name: string }>(

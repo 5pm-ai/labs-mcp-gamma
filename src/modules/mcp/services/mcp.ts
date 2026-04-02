@@ -56,6 +56,7 @@ const INGEST_CATALOG_URI = "ingest://catalog";
 interface IngestCatalogEntry {
   ingestId: string;
   name: string;
+  warehouseConnectorId: string;
   warehouseName: string;
   warehouseType: string;
   sinkName: string;
@@ -113,12 +114,44 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     return listSinks(userId);
   };
 
+  const getScopedConnectors = async () => {
+    let warehouses = await getWarehouses();
+    let sinks = await getSinks();
+
+    if (isPostgresReady()) {
+      const scope = await resolveUserScope(userId);
+      if (scope !== null && scope.columns.length > 0) {
+        const scopedWhIds = new Set(scope.columns.map((c) => c.connectorId));
+        warehouses = warehouses.filter((w) => scopedWhIds.has(w.id));
+        const scopedSinkIds = new Set<string>();
+        try {
+          const sinkResult = await withUserContext(userId, async (client) => {
+            return client.query<{ sink_connector_id: string }>(
+              `SELECT DISTINCT sink_connector_id FROM ingests
+               WHERE warehouse_connector_id = ANY($1)
+               AND deleted_at IS NULL AND sink_connector_id IS NOT NULL`,
+              [[...scopedWhIds]],
+            );
+          });
+          for (const r of sinkResult.rows) scopedSinkIds.add(r.sink_connector_id);
+        } catch { /* best effort */ }
+        if (scopedSinkIds.size > 0) sinks = sinks.filter((s) => scopedSinkIds.has(s.id));
+      } else if (scope !== null && scope.columns.length === 0) {
+        warehouses = [];
+        sinks = [];
+      }
+    }
+
+    return { warehouses, sinks };
+  };
+
   const getIngestCatalog = async (): Promise<IngestCatalogEntry[]> => {
     if (!isWarehouseAvailable()) return [];
     try {
       const result = await withUserContext(userId, async (client) => {
         return client.query<{
           ingest_id: string; name: string;
+          warehouse_connector_id: string;
           wh_name: string; wh_type: string;
           sink_name: string; sink_type: string;
           embedding_model: string;
@@ -127,6 +160,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
           columns_discovered: number; relationships_discovered: number;
         }>(
           `SELECT i.id AS ingest_id, i.name,
+                  i.warehouse_connector_id,
                   wc.name AS wh_name, wc.type AS wh_type,
                   sc.name AS sink_name, sc.type AS sink_type,
                   i.embedding_model,
@@ -145,6 +179,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
       return result.rows.map((r) => ({
         ingestId: r.ingest_id,
         name: r.name,
+        warehouseConnectorId: r.warehouse_connector_id,
         warehouseName: r.wh_name,
         warehouseType: r.wh_type,
         sinkName: r.sink_name,
@@ -166,8 +201,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
   // Resources
   // ---------------------------------------------------------------------------
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    const warehouses = await getWarehouses();
-    const sinks = await getSinks();
+    const { warehouses, sinks } = await getScopedConnectors();
     const resources = [
       {
         uri: "warehouse://connectors",
@@ -218,7 +252,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     const uri = request.params.uri;
 
     if (uri === "warehouse://connectors") {
-      const warehouses = await getWarehouses();
+      const { warehouses } = await getScopedConnectors();
       return {
         contents: [{
           uri,
@@ -229,7 +263,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     }
 
     if (uri === "sink://connectors") {
-      const sinks = await getSinks();
+      const { sinks } = await getScopedConnectors();
       return {
         contents: [{
           uri,
@@ -264,7 +298,16 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     }
 
     if (uri === INGEST_CATALOG_URI) {
-      const catalog = await getIngestCatalog();
+      let catalog = await getIngestCatalog();
+      if (isPostgresReady()) {
+        const scope = await resolveUserScope(userId);
+        if (scope !== null && scope.columns.length > 0) {
+          const scopedWhIds = new Set(scope.columns.map((c) => c.connectorId));
+          catalog = catalog.filter((c) => scopedWhIds.has(c.warehouseConnectorId ?? ""));
+        } else if (scope !== null && scope.columns.length === 0) {
+          catalog = [];
+        }
+      }
       return {
         contents: [{
           uri,
@@ -425,30 +468,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     const tools: Tool[] = [];
 
     if (isWarehouseAvailable()) {
-      let warehouses = await listWarehouses(userId);
-      let sinks = await listSinks(userId);
-
-      const scope = await resolveUserScope(userId);
-      if (scope !== null && scope.columns.length > 0) {
-        const scopedWhIds = new Set(scope.columns.map((c) => c.connectorId));
-        warehouses = warehouses.filter((w) => scopedWhIds.has(w.id));
-        const scopedSinkIds = new Set<string>();
-        try {
-          const sinkResult = await withUserContext(userId, async (client) => {
-            return client.query<{ sink_connector_id: string }>(
-              `SELECT DISTINCT sink_connector_id FROM ingests
-               WHERE warehouse_connector_id = ANY($1)
-               AND deleted_at IS NULL AND sink_connector_id IS NOT NULL`,
-              [[...scopedWhIds]],
-            );
-          });
-          for (const r of sinkResult.rows) scopedSinkIds.add(r.sink_connector_id);
-        } catch { /* best effort */ }
-        if (scopedSinkIds.size > 0) sinks = sinks.filter((s) => scopedSinkIds.has(s.id));
-      } else if (scope !== null && scope.columns.length === 0) {
-        warehouses = [];
-        sinks = [];
-      }
+      const { warehouses, sinks } = await getScopedConnectors();
 
       const connectorList = warehouses.length > 0
         ? warehouses.map((w) => `${w.name} (${w.type}) id:${w.id}`).join("; ")
