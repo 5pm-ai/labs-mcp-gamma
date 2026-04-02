@@ -52,6 +52,8 @@ export async function runIngestPipeline(
     currentStageKey = "crawl_schemas";
     const crawlResult = await runCrawl(warehouseConnector, reporter);
 
+    currentStageKey = "persist_catalog";
+    await reporter.updateStage("persist_catalog", { status: "running", startedAt: new Date(), itemsTotal: crawlResult.columns.length });
     await withRls(pool, config.userId, async (client) => {
       await client.query("DELETE FROM connector_columns WHERE connector_id = $1", [config.warehouseConnectorId]);
       for (const col of crawlResult.columns) {
@@ -62,7 +64,8 @@ export async function runIngestPipeline(
         );
       }
     });
-    await reporter.writeLog("crawl_schemas", "info", `Persisted ${crawlResult.columns.length} column(s) to connector_columns catalog`);
+    await reporter.updateStage("persist_catalog", { status: "done", completedAt: new Date(), itemsProcessed: crawlResult.columns.length });
+    await reporter.writeLog("persist_catalog", "info", `Persisted ${crawlResult.columns.length} column(s) to connector_columns catalog`);
 
     currentStageKey = "extract_relationships";
     const relationships = await runExtractRelationships(

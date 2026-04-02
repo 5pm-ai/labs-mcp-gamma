@@ -7,6 +7,7 @@ export interface SqlValidationResult {
   allowed: boolean;
   rewrittenSql?: string;
   deniedColumns?: string[];
+  deniedTables?: string[];
   error?: string;
 }
 
@@ -40,47 +41,82 @@ async function loadCatalogForConnector(
 
   const catalog = new Map<string, string[]>();
   for (const row of result.rows) {
-    const key = `${row.schema_name}.${row.table_name}`;
+    const key = `${row.schema_name}.${row.table_name}`.toLowerCase();
     if (!catalog.has(key)) catalog.set(key, []);
-    catalog.get(key)!.push(row.column_name);
+    catalog.get(key)!.push(row.column_name.toLowerCase());
   }
   return catalog;
 }
 
-function extractTableRef(from: unknown): string[] {
-  const tables: string[] = [];
-  if (!from || typeof from !== "object") return tables;
+type ScopeTableMap = Map<string, Set<string>>;
+
+function buildScopeTableMap(scope: UserScope, connectorId: string): ScopeTableMap {
+  const map: ScopeTableMap = new Map();
+  for (const col of scope.columns) {
+    if (col.connectorId !== connectorId) continue;
+    const key = `${col.schemaName}.${col.tableName}`.toLowerCase();
+    if (!map.has(key)) map.set(key, new Set());
+    map.get(key)!.add(col.columnName.toLowerCase());
+  }
+  return map;
+}
+
+interface TableRef {
+  qualified: string;
+  alias: string | null;
+  schema: string;
+  table: string;
+}
+
+function extractTableRefs(from: unknown): TableRef[] {
+  const refs: TableRef[] = [];
+  if (!from || typeof from !== "object") return refs;
 
   const node = from as Record<string, unknown>;
 
-  if (node.type === "dual") return tables;
+  if (node.type === "dual") return refs;
 
   if (typeof node.table === "string") {
     const schema = typeof node.schema === "string" ? node.schema : "";
-    const qualified = schema ? `${schema}.${node.table}` : node.table;
-    tables.push(qualified);
+    const db = typeof node.db === "string" ? node.db : "";
+    const effectiveSchema = schema || db;
+    const qualified = effectiveSchema ? `${effectiveSchema}.${node.table}` : node.table;
+    const alias = typeof node.as === "string" ? node.as : null;
+    refs.push({ qualified, alias, schema: effectiveSchema, table: node.table });
   }
 
   if (Array.isArray(node.columns)) {
     for (const col of node.columns) {
-      tables.push(...extractTableRef(col));
+      refs.push(...extractTableRefs(col));
     }
   }
 
-  return tables;
+  return refs;
 }
 
-function extractTablesFromAst(ast: Record<string, unknown>): string[] {
-  const tables: string[] = [];
+function resolveTableKey(
+  tableRef: string,
+  tableRefs: TableRef[],
+  catalog: Map<string, string[]>,
+): string | null {
+  const lower = tableRef.toLowerCase();
 
-  const from = ast.from;
-  if (Array.isArray(from)) {
-    for (const f of from) {
-      tables.push(...extractTableRef(f));
-    }
+  if (catalog.has(lower)) return lower;
+
+  const byAlias = tableRefs.find((t) => t.alias?.toLowerCase() === lower);
+  if (byAlias) {
+    const q = byAlias.qualified.toLowerCase();
+    if (catalog.has(q)) return q;
+    const match = [...catalog.keys()].find((k) => k.endsWith(`.${byAlias.table.toLowerCase()}`));
+    if (match) return match;
   }
 
-  return tables;
+  const match = [...catalog.keys()].find(
+    (k) => k === lower || k.endsWith(`.${lower}`)
+  );
+  if (match) return match;
+
+  return null;
 }
 
 export async function validateAndRewriteSql(
@@ -96,25 +132,20 @@ export async function validateAndRewriteSql(
   try {
     ast = parser.astify(sql, { database: dialect });
   } catch {
-    return { allowed: true };
+    return { allowed: false, error: "Could not parse SQL for scope validation. Simplify the query or contact your admin." };
   }
 
   const stmts = Array.isArray(ast) ? ast : [ast];
+  const scopeMap = buildScopeTableMap(scope, connectorId);
   const catalog = await loadCatalogForConnector(userId, connectorId);
 
-  const allowedColumnNames = new Set<string>();
-  for (const col of scope.columns) {
-    if (col.connectorId === connectorId) {
-      allowedColumnNames.add(col.columnName.toLowerCase());
-    }
-  }
-
-  if (allowedColumnNames.size === 0) {
+  if (scopeMap.size === 0) {
     return { allowed: false, error: "Your scope has no allowed columns for this connector." };
   }
 
   let needsRewrite = false;
   const deniedColumns: string[] = [];
+  const deniedTables: string[] = [];
 
   for (const stmt of stmts) {
     if (!stmt || typeof stmt !== "object") continue;
@@ -122,30 +153,56 @@ export async function validateAndRewriteSql(
 
     if (s.type !== "select") continue;
 
+    const from = s.from;
+    const tableRefs: TableRef[] = [];
+    if (Array.isArray(from)) {
+      for (const f of from) {
+        tableRefs.push(...extractTableRefs(f));
+      }
+    }
+
+    for (const ref of tableRefs) {
+      const catalogKey = resolveTableKey(ref.qualified, tableRefs, catalog);
+      if (catalogKey && !scopeMap.has(catalogKey)) {
+        deniedTables.push(ref.qualified);
+      }
+    }
+
+    if (deniedTables.length > 0) {
+      return {
+        allowed: false,
+        deniedTables: [...new Set(deniedTables)],
+        error: `Access denied: table(s) [${[...new Set(deniedTables)].join(", ")}] are not in your scope "${scope.scopeName}". Your scope only allows: ${[...scopeMap.keys()].join(", ")}.`,
+      };
+    }
+
     const columns = s.columns;
 
-    if (columns === "*") {
-      const tables = extractTablesFromAst(s);
-      if (tables.length === 0) {
+    const isSelectStar = columns === "*" || (
+      Array.isArray(columns) && columns.length === 1 &&
+      (columns[0] as Record<string, unknown>)?.expr &&
+      ((columns[0] as Record<string, unknown>).expr as Record<string, unknown>)?.column === "*"
+    );
+
+    if (isSelectStar) {
+      if (tableRefs.length === 0) {
         return { allowed: false, error: "Cannot resolve SELECT * without table references. Please specify columns explicitly." };
       }
 
       const expandedCols: unknown[] = [];
-      for (const tbl of tables) {
-        let catalogKey = tbl;
-        if (!catalog.has(catalogKey)) {
-          const match = [...catalog.keys()].find((k) => k.endsWith(`.${tbl}`) || k.toLowerCase() === tbl.toLowerCase());
-          if (match) catalogKey = match;
-        }
-        const allCols = catalog.get(catalogKey) ?? [];
-        if (allCols.length === 0) continue;
+      for (const ref of tableRefs) {
+        const catalogKey = resolveTableKey(ref.qualified, tableRefs, catalog);
+        if (!catalogKey) continue;
 
-        const allowed = allCols.filter((c) => allowedColumnNames.has(c.toLowerCase()));
-        if (allowed.length === 0) continue;
+        const allowedCols = scopeMap.get(catalogKey);
+        if (!allowedCols || allowedCols.size === 0) continue;
+
+        const allCols = catalog.get(catalogKey) ?? [];
+        const allowed = allCols.filter((c) => allowedCols.has(c));
 
         for (const colName of allowed) {
           expandedCols.push({
-            expr: { type: "column_ref", table: null, column: colName },
+            expr: { type: "column_ref", table: ref.alias ?? ref.table, column: colName.toUpperCase() },
             as: null,
           });
         }
@@ -168,11 +225,41 @@ export async function validateAndRewriteSql(
         if (!expr) continue;
 
         if (expr.type === "column_ref" && typeof expr.column === "string") {
-          if (expr.column === "*") {
-            continue;
-          }
-          if (!allowedColumnNames.has(expr.column.toLowerCase())) {
-            deniedColumns.push(expr.column);
+          if (expr.column === "*") continue;
+
+          const colName = expr.column.toLowerCase();
+          const colTable = typeof expr.table === "string" ? expr.table : null;
+
+          if (colTable) {
+            const catalogKey = resolveTableKey(colTable, tableRefs, catalog);
+            if (catalogKey) {
+              const allowedCols = scopeMap.get(catalogKey);
+              if (!allowedCols || !allowedCols.has(colName)) {
+                deniedColumns.push(`${colTable}.${expr.column}`);
+              }
+            } else if (tableRefs.length === 1) {
+              const singleKey = resolveTableKey(tableRefs[0].qualified, tableRefs, catalog);
+              if (singleKey) {
+                const allowedCols = scopeMap.get(singleKey);
+                if (!allowedCols || !allowedCols.has(colName)) {
+                  deniedColumns.push(expr.column);
+                }
+              }
+            }
+          } else {
+            let foundAllowed = false;
+            for (const ref of tableRefs) {
+              const catalogKey = resolveTableKey(ref.qualified, tableRefs, catalog);
+              if (!catalogKey) continue;
+              const allowedCols = scopeMap.get(catalogKey);
+              if (allowedCols?.has(colName)) {
+                foundAllowed = true;
+                break;
+              }
+            }
+            if (!foundAllowed) {
+              deniedColumns.push(expr.column);
+            }
           }
         }
       }
@@ -180,10 +267,11 @@ export async function validateAndRewriteSql(
   }
 
   if (deniedColumns.length > 0) {
+    const unique = [...new Set(deniedColumns)];
     return {
       allowed: false,
-      deniedColumns: [...new Set(deniedColumns)],
-      error: `Access denied: columns [${[...new Set(deniedColumns)].join(", ")}] are not in your scope "${scope.scopeName}". Remove them or ask your admin to update your scope.`,
+      deniedColumns: unique,
+      error: `Access denied: columns [${unique.join(", ")}] are not in your scope "${scope.scopeName}". Remove them or ask your admin to update your scope.`,
     };
   }
 

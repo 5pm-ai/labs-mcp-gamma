@@ -68,9 +68,10 @@ export interface IngestPipelineConfig {
 export const PIPELINE_STAGES: StageDefinition[] = [
   { key: "preflight", label: "Preflight Check", order: 0 },
   { key: "crawl_schemas", label: "Crawl Schemas", order: 1 },
-  { key: "extract_relationships", label: "Extract Relationships", order: 2 },
-  { key: "generate_documents", label: "Generate Documents", order: 3 },
-  { key: "chunk_text", label: "Chunk Text", order: 4 },
-  { key: "embed_vectors", label: "Embed Vectors", order: 5 },
-  { key: "upsert_to_sink", label: "Upsert to Sink", order: 6 },
+  { key: "persist_catalog", label: "Persist Catalog", order: 2 },
+  { key: "extract_relationships", label: "Extract Relationships", order: 3 },
+  { key: "generate_documents", label: "Generate Documents", order: 4 },
+  { key: "chunk_text", label: "Chunk Text", order: 5 },
+  { key: "embed_vectors", label: "Embed Vectors", order: 6 },
+  { key: "upsert_to_sink", label: "Upsert to Sink", order: 7 },
 ];
