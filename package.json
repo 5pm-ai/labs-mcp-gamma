@@ -18,6 +18,7 @@
     "test:e2e:internal": "./scripts/test-e2e-internal.sh",
     "test:e2e:external": "./scripts/test-e2e-external.sh",
     "test:e2e": "./scripts/test-e2e-all.sh",
+    "test:e2e:live": "./scripts/test-e2e-all.sh --live",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
