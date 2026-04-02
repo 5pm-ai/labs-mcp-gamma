@@ -425,12 +425,35 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     const tools: Tool[] = [];
 
     if (isWarehouseAvailable()) {
-      const warehouses = await listWarehouses(userId);
+      let warehouses = await listWarehouses(userId);
+      let sinks = await listSinks(userId);
+
+      const scope = await resolveUserScope(userId);
+      if (scope !== null && scope.columns.length > 0) {
+        const scopedWhIds = new Set(scope.columns.map((c) => c.connectorId));
+        warehouses = warehouses.filter((w) => scopedWhIds.has(w.id));
+        const scopedSinkIds = new Set<string>();
+        try {
+          const sinkResult = await withUserContext(userId, async (client) => {
+            return client.query<{ sink_connector_id: string }>(
+              `SELECT DISTINCT sink_connector_id FROM ingests
+               WHERE warehouse_connector_id = ANY($1)
+               AND deleted_at IS NULL AND sink_connector_id IS NOT NULL`,
+              [[...scopedWhIds]],
+            );
+          });
+          for (const r of sinkResult.rows) scopedSinkIds.add(r.sink_connector_id);
+        } catch { /* best effort */ }
+        if (scopedSinkIds.size > 0) sinks = sinks.filter((s) => scopedSinkIds.has(s.id));
+      } else if (scope !== null && scope.columns.length === 0) {
+        warehouses = [];
+        sinks = [];
+      }
+
       const connectorList = warehouses.length > 0
         ? warehouses.map((w) => `${w.name} (${w.type}) id:${w.id}`).join("; ")
         : "none configured";
 
-      const sinks = await listSinks(userId);
       const catalog = sinks.length > 0 ? await getIngestCatalog() : [];
       const hasCatalog = catalog.length > 0;
 
