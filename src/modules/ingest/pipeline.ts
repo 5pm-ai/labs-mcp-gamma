@@ -52,6 +52,18 @@ export async function runIngestPipeline(
     currentStageKey = "crawl_schemas";
     const crawlResult = await runCrawl(warehouseConnector, reporter);
 
+    await withRls(pool, config.userId, async (client) => {
+      await client.query("DELETE FROM connector_columns WHERE connector_id = $1", [config.warehouseConnectorId]);
+      for (const col of crawlResult.columns) {
+        await client.query(
+          `INSERT INTO connector_columns (connector_id, schema_name, table_name, column_name, data_type, is_primary_key, is_nullable, comment)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [config.warehouseConnectorId, col.schema, col.table, col.column, col.dataType, col.isPrimaryKey, col.nullable, col.comment ?? null],
+        );
+      }
+    });
+    await reporter.writeLog("crawl_schemas", "info", `Persisted ${crawlResult.columns.length} column(s) to connector_columns catalog`);
+
     currentStageKey = "extract_relationships";
     const relationships = await runExtractRelationships(
       warehouseConnector, crawlResult.schemas, reporter,

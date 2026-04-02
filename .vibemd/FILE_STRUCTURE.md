@@ -80,7 +80,9 @@ MCP protocol module. Transport-agnostic, depends only on `ITokenValidator`.
 | `handlers/shttp.test.ts` | Unit tests for SHTTP handler |
 | `handlers/shttp.integration.test.ts` | Integration tests for SHTTP |
 | `handlers/sse.ts` | Legacy SSE transport handler |
-| `services/mcp.ts` | MCP server instance (tools, resources, prompts) |
+| `services/mcp.ts` | MCP server instance (tools, resources, prompts); warehouse/sink tool handlers enforce scopes (`resolveUserScope`, SQL validation, Pinecone metadata filters) |
+| `services/scope.ts` | Scope resolution for MCP tools — `resolveUserScope`, `buildSinkFilter`, `getAllowedColumnsForConnector`, `getConnectorColumnsLookup` |
+| `services/sql-validator.ts` | SQL parsing (`node-sql-parser`), `SELECT *` rewrite, column allowlisting against `connector_columns` |
 | `services/redisTransport.ts` | `ServerRedisTransport` — pub/sub relay for SHTTP sessions |
 | `services/redisTransport.test.ts` | Unit tests |
 | `services/redisTransport.integration.test.ts` | Integration tests |
@@ -119,10 +121,10 @@ Multi-tenant vector store query module. Same strategy + registry pattern as ware
 
 | File | Purpose |
 |---|---|
-| `types.ts` | `SinkConnector` interface, `SinkResult`, `SinkMatch`, type enums, `SinkConnectorFactory` |
+| `types.ts` | `SinkConnector` interface, `SinkResult`, `SinkMatch`, optional `filter` on `query` for metadata filtering, type enums, `SinkConnectorFactory` |
 | `registry.ts` | Map-based sink connector registry |
-| `service.ts` | `listSinks()`, `executeSinkQuery()` — orchestrator with RLS via `withUserContext` |
-| `connectors/pinecone.ts` | Pinecone connector (self-registers) |
+| `service.ts` | `listSinks()`, `executeSinkQuery()`, `executeSinkTextQuery()` — orchestrator with RLS via `withUserContext`; threads optional scope `filter` to connectors |
+| `connectors/pinecone.ts` | Pinecone connector (self-registers); passes metadata `filter` to query API |
 
 ### `src/modules/ingest/`
 
@@ -131,7 +133,7 @@ Ingest pipeline module: Cloud Run Job entry uses `src/ingest-worker.ts`; stage i
 | File | Purpose |
 |---|---|
 | `types.ts` | Shared ingest types (runs, stages, pipeline context) |
-| `pipeline.ts` | Orchestrates preflight → upsert; wires stages and reporter |
+| `pipeline.ts` | Orchestrates preflight → upsert; after crawl, persists discovered columns to `connector_columns` |
 | `reporter.ts` | Writes `ingest_run_stages` / `ingest_run_logs` to Postgres |
 | `embedder.ts` | Embedding HTTP client (direct `fetch`, no OpenAI SDK) |
 | `stages/preflight.ts` | Preflight stage |
@@ -140,7 +142,7 @@ Ingest pipeline module: Cloud Run Job entry uses `src/ingest-worker.ts`; stage i
 | `stages/documents.ts` | Document assembly |
 | `stages/chunk.ts` | Chunking for embeddings |
 | `stages/embed.ts` | Batch / call embedding API |
-| `stages/upsert.ts` | Vector upsert via sink connector |
+| `stages/upsert.ts` | Vector upsert via sink connector; vector metadata uses native arrays for `columns` / `relationships` (not `JSON.stringify`) |
 
 ### Ingest worker entrypoint
 

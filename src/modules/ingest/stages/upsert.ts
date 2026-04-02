@@ -29,9 +29,9 @@ export async function runUpsertToSink(
       ingestId,
       schema: ec.chunk.schema,
       table: ec.chunk.table,
-      columns: JSON.stringify(ec.chunk.columns),
-      relationships: JSON.stringify(
-        ec.chunk.relationships.map((r) => `${r.fromSchema}.${r.fromTable}.${r.fromColumn}->${r.toSchema}.${r.toTable}.${r.toColumn}`),
+      columns: ec.chunk.columns,
+      relationships: ec.chunk.relationships.map(
+        (r) => `${r.fromSchema}.${r.fromTable}.${r.fromColumn}->${r.toSchema}.${r.toTable}.${r.toColumn}`,
       ),
       chunkIndex: ec.chunk.chunkIndex,
       content: ec.chunk.content.slice(0, 500),

@@ -24,4 +24,5 @@
 | snowflake-sdk | ^2.3 | Snowflake warehouse connector |
 | @clickhouse/client | ^1.18 | ClickHouse warehouse connector |
 | @pinecone-database/pinecone | latest | Pinecone sink connector |
+| node-sql-parser | ^5.4.0 | Parse and rewrite SQL for scope validation (SELECT expansion, column allowlisting) |
 | Cloudflare | CDN/DNS/Proxy | DNS, TLS termination (Full SSL, Origin CA) |

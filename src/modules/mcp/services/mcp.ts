@@ -20,6 +20,8 @@ import type { WarehouseInfo } from "../../warehouse/service.js";
 import { listSinks, executeSinkTextQuery } from "../../sink/service.js";
 import type { SinkInfo } from "../../sink/service.js";
 import { withUserContext } from "../../shared/postgres.js";
+import { resolveUserScope, buildSinkFilter } from "./scope.js";
+import { validateAndRewriteSql } from "./sql-validator.js";
 
 type ToolInput = Tool["inputSchema"];
 
@@ -501,7 +503,30 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     if (name === ToolName.WAREHOUSE || name === ToolName.EXPLORE_WAREHOUSE) {
       const { sql, connectorId } = WarehouseQuerySchema.parse(args);
 
-      const result = await executeWarehouseQuery(userId, connectorId, sql);
+      let finalSql = sql;
+      if (isPostgresReady()) {
+        const scope = await resolveUserScope(userId);
+        if (scope !== null) {
+          if (scope.columns.length === 0) {
+            return {
+              content: [{ type: "text", text: "Access denied: you have no scope assigned. Contact your org admin to set up column-level access." }],
+              isError: true,
+            };
+          }
+          const validation = await validateAndRewriteSql(userId, connectorId, sql, scope);
+          if (!validation.allowed) {
+            return {
+              content: [{ type: "text", text: validation.error ?? "Query denied by scope policy." }],
+              isError: true,
+            };
+          }
+          if (validation.rewrittenSql) {
+            finalSql = validation.rewrittenSql;
+          }
+        }
+      }
+
+      const result = await executeWarehouseQuery(userId, connectorId, finalSql);
       return {
         content: [{
           type: "text",
@@ -520,7 +545,28 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
         };
       }
 
-      const result = await executeSinkTextQuery(userId, connectorId, query, topK, config.openai.apiKey, namespace);
+      let sinkFilter: Record<string, unknown> | undefined;
+      if (isPostgresReady()) {
+        const scope = await resolveUserScope(userId);
+        if (scope !== null) {
+          if (scope.columns.length === 0) {
+            return {
+              content: [{ type: "text", text: "Access denied: you have no scope assigned. Contact your org admin to set up column-level access." }],
+              isError: true,
+            };
+          }
+          const warehouseIds = await withUserContext(userId, async (client) => {
+            const r = await client.query<{ warehouse_connector_id: string }>(
+              "SELECT DISTINCT warehouse_connector_id FROM ingests WHERE sink_connector_id = $1 AND deleted_at IS NULL AND warehouse_connector_id IS NOT NULL",
+              [connectorId],
+            );
+            return r.rows.map((row) => row.warehouse_connector_id);
+          });
+          sinkFilter = buildSinkFilter(scope, warehouseIds);
+        }
+      }
+
+      const result = await executeSinkTextQuery(userId, connectorId, query, topK, config.openai.apiKey, namespace, sinkFilter);
       return {
         content: [{
           type: "text",

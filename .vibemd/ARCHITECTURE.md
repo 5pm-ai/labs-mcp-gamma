@@ -68,6 +68,16 @@ MCP Clients (Cursor, Claude Code, Codex)
 - **Postgres**: Client registrations, user identity, teams (durable, queryable, RLS-ready)
 - **Redis**: Auth flow state, tokens, sessions, pub/sub (ephemeral, fast, TTL-based)
 
+## Scope Enforcement
+
+Column-level access for org users is enforced **inside MCP tool handlers** (not by warehouse-native ACLs). Two layers:
+
+1. **Sink (vector) queries** — After resolving the caller’s scope, the server builds a Pinecone metadata filter: `columns` must match one of the allowed column **names** via `$in` (derived from `scope_columns`). Scoped users never see vectors whose metadata columns fall outside the allowlist. Admins (`org_admin`, `platform_admin` on `team_members`) **skip** sink filtering and see all matching vectors for permitted connectors.
+
+2. **Warehouse (SQL) queries** — For scoped users, SQL is parsed with **`node-sql-parser`**, `SELECT *` is rewritten to explicit columns, and every referenced column is checked against the scope and the **`connector_columns`** catalog (plus connector/schema/table alignment). Invalid or over-broad queries are rejected before execution. Admins bypass validation.
+
+**Membership edge cases**: Users in `team_members` without a scope row and without an admin role get **no** warehouse or sink query access (empty allowlist / deny-all filter). Scope resolution reads **`scopes`**, **`scope_members`**, and **`scope_columns`** under the same **`mcp_app`** + RLS context as other MCP reads.
+
 ## Production Deployment (GCP us-east4)
 
 ```

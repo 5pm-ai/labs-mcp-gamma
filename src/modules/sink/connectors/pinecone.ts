@@ -20,7 +20,7 @@ class PineconeConnector implements SinkConnector {
     this.pc = new Pinecone({ apiKey });
   }
 
-  async query(vector: number[], topK: number, namespace?: string): Promise<SinkResult> {
+  async query(vector: number[], topK: number, namespace?: string, filter?: Record<string, unknown>): Promise<SinkResult> {
     const index = this.pc.index(this.indexName);
     const ns = namespace || this.defaultNamespace;
     const target = ns ? index.namespace(ns) : index;
@@ -29,6 +29,7 @@ class PineconeConnector implements SinkConnector {
       vector,
       topK,
       includeMetadata: true,
+      ...(filter && Object.keys(filter).length > 0 ? { filter } : {}),
     });
 
     return {

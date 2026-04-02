@@ -57,6 +57,7 @@ export async function executeSinkQuery(
   vector: number[],
   topK: number,
   namespace?: string,
+  filter?: Record<string, unknown>,
 ): Promise<SinkResult> {
   const row = await withUserContext(userId, async (client) => {
     const result = await client.query<SinkRow>(
@@ -88,7 +89,7 @@ export async function executeSinkQuery(
   const connector = factory(credentials, row.config);
 
   try {
-    return await connector.query(vector, topK, namespace);
+    return await connector.query(vector, topK, namespace, filter);
   } finally {
     await connector.close();
   }
@@ -106,6 +107,7 @@ export async function executeSinkTextQuery(
   topK: number,
   openaiApiKey: string,
   namespace?: string,
+  filter?: Record<string, unknown>,
 ): Promise<SinkResult> {
   const row = await withUserContext(userId, async (client) => {
     const result = await client.query<SinkRowWithEmbedding>(
@@ -161,7 +163,7 @@ export async function executeSinkTextQuery(
   const connector = factory(credentials, row.config);
 
   try {
-    return await connector.query(vectors[0], topK, namespace);
+    return await connector.query(vectors[0], topK, namespace, filter);
   } finally {
     await connector.close();
   }

@@ -28,6 +28,13 @@ Two-layer OAuth 2.1 architecture:
 - **Current state**: Permissive `allow_all` default policies in `db/init.sql` grant `mcp_app` full access on all tables (`FOR ALL ... USING (true) WITH CHECK (true)`). These act as a structural placeholder until real user-scoped policies are added.
 - **Warning**: `FORCE ROW LEVEL SECURITY` with zero policies denies all operations — even to role with table grants. Default permissive policies must exist before any query can succeed. Do not remove them without simultaneously adding replacement policies.
 
+## Scope enforcement (column access)
+
+- **Where it runs**: Scopes are enforced at the **MCP tool layer** (warehouse and sink query handlers in `services/mcp.ts`), not inside Snowflake/BigQuery/ClickHouse as native row/column grants. The warehouse still sees only SQL the MCP server has already validated or issued on behalf of an admin.
+- **Data**: Scope definitions and allowlists live in Postgres (`scopes`, `scope_members`, `scope_columns`; see **DATA_MODEL.md**). **`mcp_app`** reads them with the same **`withUserContext`** session as other tenant-aware queries.
+- **RLS**: Row-level policies on those tables scope which rows each user can read (e.g. team membership); enforcement of “which columns may appear in queries” is **application logic** (SQL validator + Pinecone metadata filter), not warehouse RLS.
+- **Admins**: `org_admin` / `platform_admin` bypass column scope checks. Non-admin org users without a scope assignment get **deny-all** behavior for scoped query paths.
+
 ## Canonical User Identity
 
 - Auth0 `sub` claim is mapped to an internal UUID in the `users` table

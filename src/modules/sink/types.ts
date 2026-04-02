@@ -23,7 +23,7 @@ export interface UpsertResult {
 }
 
 export interface SinkConnector {
-  query(vector: number[], topK: number, namespace?: string): Promise<SinkResult>;
+  query(vector: number[], topK: number, namespace?: string, filter?: Record<string, unknown>): Promise<SinkResult>;
   upsert(records: VectorRecord[], namespace?: string): Promise<UpsertResult>;
   close(): Promise<void>;
 }
