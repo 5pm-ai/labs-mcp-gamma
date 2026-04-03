@@ -361,6 +361,45 @@ describe("sql-validator (pen test remediations)", () => {
     });
   });
 
+  describe("R6: CTE/derived-table SELECT * bypass", () => {
+    it("blocks SELECT * in CTE body when table has denied columns", async () => {
+      const r = await validate(
+        "WITH data AS (SELECT * FROM schema_a.table_1) SELECT col_a FROM data",
+      );
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/SELECT \*/i);
+    });
+
+    it("blocks SELECT * in derived table when table has denied columns", async () => {
+      const r = await validate(
+        "SELECT col_a FROM (SELECT * FROM schema_a.table_1) AS sub",
+      );
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/SELECT \*/i);
+    });
+
+    it("blocks unqualified denied column from CTE-only FROM", async () => {
+      const r = await validate(
+        "WITH data AS (SELECT col_a FROM schema_a.table_1) SELECT secret_col FROM data",
+      );
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("allows SELECT * at top level (handled by rewrite)", async () => {
+      const r = await validate("SELECT * FROM schema_a.table_1");
+      expect(r.allowed).toBe(true);
+      expect(r.rewrittenSql).toBeDefined();
+    });
+
+    it("allows CTE with explicit in-scope columns", async () => {
+      const r = await validate(
+        "WITH data AS (SELECT col_a, col_b FROM schema_a.table_1) SELECT col_a FROM data",
+      );
+      expect(r.allowed).toBe(true);
+    });
+  });
+
   // ── Legitimate queries (no regression) ───────────────────────────────
   describe("legitimate queries", () => {
     it("allows simple SELECT with in-scope columns", async () => {

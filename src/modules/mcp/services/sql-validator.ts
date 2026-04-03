@@ -327,7 +327,34 @@ function validateSelectNode(
     }
   }
 
-  // 3. Walk all clauses for nested subqueries (table validation in nested SELECTs)
+  // 3. Deny SELECT * when FROM has tables with denied columns
+  const hasSelectStar = s.columns === "*" || (
+    Array.isArray(s.columns) && s.columns.length === 1 &&
+    (() => {
+      const first = (s.columns as Record<string, unknown>[])[0];
+      const expr = first?.expr as Record<string, unknown> | undefined;
+      return expr && resolveColumnName(expr.column) === "*";
+    })()
+  );
+  if (hasSelectStar && depth > 0) {
+    for (const ref of tableRefs) {
+      const lt = ref.table.toLowerCase();
+      const lq = ref.qualified.toLowerCase();
+      if (localAliases.has(lq) || localAliases.has(lt)) continue;
+      const catalogKey = resolveTableKey(ref.qualified, tableRefs, ctx.catalog);
+      if (!catalogKey) continue;
+      const catalogCols = ctx.catalog.get(catalogKey) ?? [];
+      const allowedCols = ctx.scopeMap.get(catalogKey);
+      if (catalogCols.some((c) => !allowedCols?.has(c))) {
+        return (
+          "SELECT * is not allowed here because the table contains columns outside your scope. " +
+          "Please specify columns explicitly."
+        );
+      }
+    }
+  }
+
+  // 4. Walk all clauses for nested subqueries (table validation in nested SELECTs)
   if (s.columns && s.columns !== "*" && Array.isArray(s.columns)) {
     for (const col of s.columns) {
       const err = walkForNestedSelects(col, localCtx, depth);
@@ -397,10 +424,25 @@ function validateSelectNode(
       if (checkedAnyTable && !foundAllowed) {
         return `Access denied: column "${colRef.column}" is not in your scope. Contact your admin.`;
       }
+      if (!checkedAnyTable) {
+        let inCatalog = false;
+        for (const cols of ctx.catalog.values()) {
+          if (cols.includes(colName)) { inCatalog = true; break; }
+        }
+        if (inCatalog) {
+          let inScope = false;
+          for (const allowed of ctx.scopeMap.values()) {
+            if (allowed.has(colName)) { inScope = true; break; }
+          }
+          if (!inScope) {
+            return `Access denied: column "${colRef.column}" is not in your scope. Contact your admin.`;
+          }
+        }
+      }
     }
   }
 
-  // 5. UNION / INTERSECT / EXCEPT
+  // 6. UNION / INTERSECT / EXCEPT
   if (s._next && typeof s._next === "object") {
     const next = s._next as Record<string, unknown>;
     if (next.type === "select") {
