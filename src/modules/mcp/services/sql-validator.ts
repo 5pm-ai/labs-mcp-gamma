@@ -174,6 +174,24 @@ function collectColumnRefs(
   return refs;
 }
 
+function collectUsingColumns(using: unknown): Array<{ table: null; column: string }> {
+  const refs: Array<{ table: null; column: string }> = [];
+  if (!using) return refs;
+  const items = Array.isArray(using) ? using : [using];
+  for (const item of items) {
+    if (typeof item === "string") {
+      refs.push({ table: null, column: item });
+    } else if (item && typeof item === "object") {
+      const obj = item as Record<string, unknown>;
+      const name = typeof obj.value === "string" ? obj.value
+        : typeof obj.column === "string" ? obj.column
+        : resolveColumnName(obj);
+      if (name) refs.push({ table: null, column: name });
+    }
+  }
+  return refs;
+}
+
 function isSystemTable(qualified: string): boolean {
   const parts = qualified.toLowerCase().split(".");
   return parts.some((p) => SYSTEM_SCHEMAS.has(p));
@@ -336,7 +354,7 @@ function validateSelectNode(
     for (const f of s.from) {
       const fObj = f as Record<string, unknown>;
       if (fObj.on) allColRefs.push(...collectColumnRefs(fObj.on));
-      if (fObj.using) allColRefs.push(...collectColumnRefs(fObj.using));
+      if (fObj.using) allColRefs.push(...collectUsingColumns(fObj.using));
     }
   }
 
@@ -348,6 +366,20 @@ function validateSelectNode(
         const allowedCols = ctx.scopeMap.get(catalogKey);
         if (!allowedCols || !allowedCols.has(colName)) {
           return `Access denied: column "${colRef.column}" is not in your scope. Contact your admin.`;
+        }
+      } else {
+        let inCatalog = false;
+        for (const cols of ctx.catalog.values()) {
+          if (cols.includes(colName)) { inCatalog = true; break; }
+        }
+        if (inCatalog) {
+          let inScope = false;
+          for (const allowed of ctx.scopeMap.values()) {
+            if (allowed.has(colName)) { inScope = true; break; }
+          }
+          if (!inScope) {
+            return `Access denied: column "${colRef.column}" is not in your scope. Contact your admin.`;
+          }
         }
       }
     } else {

@@ -329,6 +329,38 @@ describe("sql-validator (pen test remediations)", () => {
     });
   });
 
+  describe("R5: USING clause + CTE literal brute force", () => {
+    it("blocks denied column in USING clause", async () => {
+      const r = await validate(
+        "SELECT col_a FROM schema_a.table_1 AS a JOIN schema_a.table_1 AS b USING(secret_col)",
+      );
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("allows USING with in-scope columns", async () => {
+      const r = await validate(
+        "SELECT col_a FROM schema_a.table_1 AS a JOIN schema_a.table_1 AS b USING(col_a)",
+      );
+      expect(r.allowed).toBe(true);
+    });
+
+    it("blocks CTE-qualified denied column (catalog match, not in scope)", async () => {
+      const r = await validate(
+        "WITH t AS (SELECT col_a AS secret_col FROM schema_a.table_1) SELECT t.secret_col FROM t",
+      );
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("allows CTE-qualified novel column not in catalog", async () => {
+      const r = await validate(
+        "WITH t AS (SELECT col_a AS my_alias FROM schema_a.table_1) SELECT t.my_alias FROM t",
+      );
+      expect(r.allowed).toBe(true);
+    });
+  });
+
   // ── Legitimate queries (no regression) ───────────────────────────────
   describe("legitimate queries", () => {
     it("allows simple SELECT with in-scope columns", async () => {

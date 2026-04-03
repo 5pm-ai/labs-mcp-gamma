@@ -72,6 +72,13 @@ The SQL validator (`services/sql-validator.ts`) was hardened against 6 vulnerabi
 | 14 | CTE column aliasing bypass — column validation only at top level, CTEs alias denied cols freely | Critical | Column validation moved into `validateSelectNode` — runs at every recursion depth (CTEs, derived tables, subqueries) |
 | 15 | JOIN ON/USING condition bypass — FROM clause not column-validated | Medium-High | `collectColumnRefs` now applied to `fObj.on` and `fObj.using` inside FROM items |
 
+### Round 5 hardening (2025-04-03)
+
+| # | Vulnerability | Severity | Mitigation |
+|---|---|---|---|
+| 16 | USING clause strings bypass `collectColumnRefs` | Medium-High | `collectUsingColumns()` extracts column names from USING items (handles `{ type: "default", value: "..." }` AST shape) |
+| 17 | CTE-qualified columns skip scope when `resolveTableKey` returns null | Medium-High | When table resolves to CTE/derived alias, column name is checked against catalog — if it matches a real column not in scope, denied |
+
 **Design constraints preserved**:
 - Admins (`org_admin`, `platform_admin`) still bypass all scope checks
 - `SELECT *` rewrite to explicit scope-allowed columns still works at the top level
