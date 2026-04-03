@@ -143,6 +143,37 @@ function resolveColumnName(column: unknown): string | null {
   return null;
 }
 
+function collectColumnRefs(
+  node: unknown,
+): Array<{ table: string | null; column: string }> {
+  const refs: Array<{ table: string | null; column: string }> = [];
+  if (!node || typeof node !== "object") return refs;
+
+  if (Array.isArray(node)) {
+    for (const item of node) refs.push(...collectColumnRefs(item));
+    return refs;
+  }
+
+  const obj = node as Record<string, unknown>;
+
+  if (obj.type === "column_ref") {
+    const colName = resolveColumnName(obj.column);
+    if (colName && colName !== "*") {
+      refs.push({ table: typeof obj.table === "string" ? obj.table : null, column: colName });
+    }
+    return refs;
+  }
+
+  if (obj.type === "select") return refs;
+
+  for (const value of Object.values(obj)) {
+    if (value && typeof value === "object") {
+      refs.push(...collectColumnRefs(value));
+    }
+  }
+  return refs;
+}
+
 function isSystemTable(qualified: string): boolean {
   const parts = qualified.toLowerCase().split(".");
   return parts.some((p) => SYSTEM_SCHEMAS.has(p));
@@ -274,10 +305,7 @@ function validateSelectNode(
       );
     }
     if (!ctx.scopeMap.has(catalogKey)) {
-      return (
-        `Access denied: table "${ref.qualified}" is not in your scope. ` +
-        `Allowed tables: ${[...ctx.scopeMap.keys()].join(", ")}.`
-      );
+      return `Access denied: table "${ref.qualified}" is not in your scope. Contact your admin to update your scope.`;
     }
   }
 
@@ -407,53 +435,46 @@ export async function validateAndRewriteSql(
       continue;
     }
 
-    if (Array.isArray(columns)) {
-      for (const col of columns) {
-        if (!col || typeof col !== "object") continue;
-        const c = col as Record<string, unknown>;
-        const expr = c.expr as Record<string, unknown> | undefined;
-        if (!expr) continue;
+    const allColRefs = [
+      ...collectColumnRefs(columns),
+      ...collectColumnRefs(s.having),
+      ...collectColumnRefs(s.orderby),
+    ];
 
-        const columnName = expr.type === "column_ref" ? resolveColumnName(expr.column) : null;
-        if (columnName) {
-          if (columnName === "*") continue;
+    for (const ref of allColRefs) {
+      const colName = ref.column.toLowerCase();
 
-          const colName = columnName.toLowerCase();
-          const colTable = typeof expr.table === "string" ? expr.table : null;
-
-          if (colTable) {
-            const catalogKey = resolveTableKey(colTable, tableRefs, catalog);
-            if (catalogKey) {
-              const allowedCols = scopeMap.get(catalogKey);
-              if (!allowedCols || !allowedCols.has(colName)) {
-                deniedColumns.push(`${colTable}.${columnName}`);
-              }
-            } else if (tableRefs.length === 1) {
-              const singleKey = resolveTableKey(tableRefs[0].qualified, tableRefs, catalog);
-              if (singleKey) {
-                const allowedCols = scopeMap.get(singleKey);
-                if (!allowedCols || !allowedCols.has(colName)) {
-                  deniedColumns.push(columnName);
-                }
-              }
-            }
-          } else {
-            let foundAllowed = false;
-            let checkedAnyTable = false;
-            for (const ref of tableRefs) {
-              const catalogKey = resolveTableKey(ref.qualified, tableRefs, catalog);
-              if (!catalogKey) continue;
-              checkedAnyTable = true;
-              const allowedCols = scopeMap.get(catalogKey);
-              if (allowedCols?.has(colName)) {
-                foundAllowed = true;
-                break;
-              }
-            }
-            if (checkedAnyTable && !foundAllowed) {
-              deniedColumns.push(columnName);
+      if (ref.table) {
+        const catalogKey = resolveTableKey(ref.table, tableRefs, catalog);
+        if (catalogKey) {
+          const allowedCols = scopeMap.get(catalogKey);
+          if (!allowedCols || !allowedCols.has(colName)) {
+            deniedColumns.push(`${ref.table}.${ref.column}`);
+          }
+        } else if (tableRefs.length === 1) {
+          const singleKey = resolveTableKey(tableRefs[0].qualified, tableRefs, catalog);
+          if (singleKey) {
+            const allowedCols = scopeMap.get(singleKey);
+            if (!allowedCols || !allowedCols.has(colName)) {
+              deniedColumns.push(ref.column);
             }
           }
+        }
+      } else {
+        let foundAllowed = false;
+        let checkedAnyTable = false;
+        for (const tRef of tableRefs) {
+          const catalogKey = resolveTableKey(tRef.qualified, tableRefs, catalog);
+          if (!catalogKey) continue;
+          checkedAnyTable = true;
+          const allowedCols = scopeMap.get(catalogKey);
+          if (allowedCols?.has(colName)) {
+            foundAllowed = true;
+            break;
+          }
+        }
+        if (checkedAnyTable && !foundAllowed) {
+          deniedColumns.push(ref.column);
         }
       }
     }
@@ -464,7 +485,7 @@ export async function validateAndRewriteSql(
     return {
       allowed: false,
       deniedColumns: unique,
-      error: `Access denied: columns [${unique.join(", ")}] are not in your scope "${scope.scopeName}". Remove them or ask your admin to update your scope.`,
+      error: `Access denied: columns [${unique.join(", ")}] are not in your scope. Remove them or ask your admin to update your scope.`,
     };
   }
 

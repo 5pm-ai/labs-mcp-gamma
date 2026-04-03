@@ -351,7 +351,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     const { name, arguments: args } = request.params;
 
     if (name === "warehouse_guide") {
-      const warehouses = await getWarehouses();
+      const { warehouses } = await getScopedConnectors();
 
       let guide: string;
       if (warehouses.length === 0) {
@@ -383,7 +383,7 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     }
 
     if (name === "sink_guide") {
-      const sinks = await getSinks();
+      const { sinks } = await getScopedConnectors();
 
       let guide: string;
       if (sinks.length === 0) {
@@ -416,7 +416,16 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     }
 
     if (name === "ingest_catalog_guide") {
-      const catalog = await getIngestCatalog();
+      let catalog = await getIngestCatalog();
+      if (isPostgresReady()) {
+        const scope = await resolveUserScope(userId);
+        if (scope !== null && scope.columns.length > 0) {
+          const whSet = new Set(scope.warehouseConnectorIds);
+          catalog = catalog.filter((c) => whSet.has(c.warehouseConnectorId ?? ""));
+        } else if (scope !== null && scope.columns.length === 0) {
+          catalog = [];
+        }
+      }
 
       let guide: string;
       if (catalog.length === 0) {

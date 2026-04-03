@@ -48,6 +48,15 @@ The SQL validator (`services/sql-validator.ts`) was hardened against 6 vulnerabi
 | 5 | Pinecone sink metadata leakage — `schema`/`table`/`content` unfiltered | Medium | Post-query `sanitizeSinkResults()` drops matches whose `schema.table` is not in the user's scope |
 | 6 | Non-SELECT passthrough — validator `continue`d on non-select types | Medium | Non-SELECT statement types are rejected outright |
 
+### Round 2 hardening (2025-04-03)
+
+| # | Vulnerability | Severity | Mitigation |
+|---|---|---|---|
+| 7 | Column validation bypass — functions/aggregates/CASE/IF/STRUCT/window wrapping column_refs pass unchecked | High | `collectColumnRefs()` recursively extracts ALL `column_ref` nodes from any expression tree (function args, CASE branches, window specs, etc.) and validates each against scope. Applied to SELECT, HAVING, and ORDER BY. |
+| 8 | Prompt info leak — `warehouse_guide`, `sink_guide`, `ingest_catalog_guide` use unscoped connector lists | Medium | Prompt handlers now use `getScopedConnectors()` and scope-filtered ingest catalog (same as tools/resources) |
+| 9 | Error message oracle — denial errors reveal scope name and allowed table list | Low | Scope name and table list redacted from all error messages |
+| 10 | Sink metadata column list — column names visible in metadata for in-scope tables | Low | `sanitizeSinkResults()` now also filters `columns` array in metadata to only scope-allowed columns |
+
 **Design constraints preserved**:
 - Admins (`org_admin`, `platform_admin`) still bypass all scope checks
 - `SELECT *` rewrite to explicit scope-allowed columns still works at the top level
@@ -55,6 +64,7 @@ The SQL validator (`services/sql-validator.ts`) was hardened against 6 vulnerabi
 - Column validation at the top-level SELECT skips CTE-only FROM clauses (table-level security is enforced recursively inside CTEs)
 - Depth limit (32) prevents stack overflow from deeply nested queries
 - All dialect-specific AST shapes handled (BigQuery wraps column refs as objects, CTE bodies as `stmt.ast`)
+- Functions wrapping only in-scope columns still pass (e.g. `UPPER(allowed_col)`, `MAX(allowed_col)`)
 
 ## Canonical User Identity
 

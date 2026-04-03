@@ -186,6 +186,83 @@ describe("sql-validator (pen test remediations)", () => {
     });
   });
 
+  // ── Round 2: Column validation bypass via expression wrapping ────────
+  describe("R2: column bypass via expression wrapping", () => {
+    it("blocks CONCAT(denied_col, '')", async () => {
+      const r = await validate("SELECT CONCAT(secret_col, '') AS leaked FROM schema_a.table_1");
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("blocks UPPER(denied_col)", async () => {
+      const r = await validate("SELECT UPPER(secret_col) FROM schema_a.table_1");
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("blocks MAX(denied_col)", async () => {
+      const r = await validate("SELECT MAX(secret_col) FROM schema_a.table_1");
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("blocks IF(denied_col IS NOT NULL, denied_col, 'x')", async () => {
+      const r = await validate(
+        "SELECT IF(secret_col IS NOT NULL, secret_col, 'x') FROM schema_a.table_1",
+      );
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("blocks CASE WHEN denied_col THEN denied_col END", async () => {
+      const r = await validate(
+        "SELECT CASE WHEN secret_col IS NOT NULL THEN secret_col END FROM schema_a.table_1",
+      );
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("blocks ORDER BY denied_col", async () => {
+      const r = await validate("SELECT col_a FROM schema_a.table_1 ORDER BY secret_col");
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("blocks HAVING MAX(denied_col)", async () => {
+      const r = await validate(
+        "SELECT col_a FROM schema_a.table_1 GROUP BY col_a HAVING MAX(secret_col) > '0'",
+      );
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("allows functions wrapping only in-scope columns", async () => {
+      const r = await validate("SELECT UPPER(col_a), MAX(col_b) FROM schema_a.table_1");
+      expect(r.allowed).toBe(true);
+    });
+
+    it("blocks mixed allowed + denied columns inside functions", async () => {
+      const r = await validate("SELECT CONCAT(col_a, secret_col) FROM schema_a.table_1");
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+  });
+
+  // ── Round 2: Error message oracle ──────────────────────────────────
+  describe("R2: error message oracle", () => {
+    it("does not reveal scope name in error", async () => {
+      const r = await validate("SELECT secret_col FROM schema_a.table_1");
+      expect(r.allowed).toBe(false);
+      expect(r.error).not.toMatch(/Marketing Analyst/);
+    });
+
+    it("does not reveal allowed table list in table denial", async () => {
+      const r = await validate("SELECT x FROM schema_b.secret_table");
+      expect(r.allowed).toBe(false);
+      expect(r.error).not.toMatch(/schema_a\.table_1/);
+    });
+  });
+
   // ── Legitimate queries (no regression) ───────────────────────────────
   describe("legitimate queries", () => {
     it("allows simple SELECT with in-scope columns", async () => {
@@ -273,5 +350,14 @@ describe("sanitizeSinkResults (pen test #5)", () => {
     const result = sanitizeSinkResults(matches, scope);
     expect(result).toHaveLength(2);
     expect(result.map((m) => m.id)).toEqual(["1", "3"]);
+  });
+
+  it("R2: strips out-of-scope column names from metadata", () => {
+    const matches = [
+      { id: "1", score: 0.9, metadata: { schema: "schema_a", table: "table_1", columns: ["col_a", "secret_col", "another_col"] } },
+    ];
+    const result = sanitizeSinkResults(matches, scope);
+    expect(result).toHaveLength(1);
+    expect(result[0].metadata?.columns).toEqual(["col_a"]);
   });
 });

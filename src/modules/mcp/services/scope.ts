@@ -95,17 +95,37 @@ export function sanitizeSinkResults(
   scope: UserScope,
 ): Array<{ id: string; score?: number; metadata?: Record<string, unknown> }> {
   const allowedTables = new Set<string>();
+  const allowedColsByTable = new Map<string, Set<string>>();
   for (const col of scope.columns) {
-    allowedTables.add(`${col.schemaName}.${col.tableName}`.toLowerCase());
+    const key = `${col.schemaName}.${col.tableName}`.toLowerCase();
+    allowedTables.add(key);
+    if (!allowedColsByTable.has(key)) allowedColsByTable.set(key, new Set());
+    allowedColsByTable.get(key)!.add(col.columnName.toLowerCase());
   }
 
-  return matches.filter((m) => {
-    if (!m.metadata) return false;
-    const schema = String(m.metadata.schema ?? "").toLowerCase();
-    const table = String(m.metadata.table ?? "").toLowerCase();
-    if (!schema || !table) return false;
-    return allowedTables.has(`${schema}.${table}`);
-  });
+  return matches
+    .filter((m) => {
+      if (!m.metadata) return false;
+      const schema = String(m.metadata.schema ?? "").toLowerCase();
+      const table = String(m.metadata.table ?? "").toLowerCase();
+      if (!schema || !table) return false;
+      return allowedTables.has(`${schema}.${table}`);
+    })
+    .map((m) => {
+      if (!m.metadata) return m;
+      const key = `${String(m.metadata.schema ?? "")}.${String(m.metadata.table ?? "")}`.toLowerCase();
+      const allowedCols = allowedColsByTable.get(key);
+      if (!allowedCols || !Array.isArray(m.metadata.columns)) return m;
+      return {
+        ...m,
+        metadata: {
+          ...m.metadata,
+          columns: (m.metadata.columns as string[]).filter(
+            (c) => allowedCols.has(String(c).toLowerCase()),
+          ),
+        },
+      };
+    });
 }
 
 export function getConnectorColumnsLookup(scope: UserScope, connectorId: string): Map<string, Set<string>> {
