@@ -20,7 +20,8 @@ import type { WarehouseInfo } from "../../warehouse/service.js";
 import { listSinks, executeSinkTextQuery } from "../../sink/service.js";
 import type { SinkInfo } from "../../sink/service.js";
 import { withUserContext } from "../../shared/postgres.js";
-import { resolveUserScope, buildSinkFilter } from "./scope.js";
+import { resolveUserScope, buildSinkFilter, sanitizeSinkResults } from "./scope.js";
+import type { UserScope } from "./scope.js";
 import { validateAndRewriteSql } from "./sql-validator.js";
 
 type ToolInput = Tool["inputSchema"];
@@ -578,24 +579,31 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
       }
 
       let sinkFilter: Record<string, unknown> | undefined;
+      let activeScope: UserScope | null = null;
       if (isPostgresReady()) {
-        const scope = await resolveUserScope(userId);
-        if (scope !== null) {
-          if (scope.columns.length === 0) {
+        activeScope = await resolveUserScope(userId);
+        if (activeScope !== null) {
+          if (activeScope.columns.length === 0) {
             return {
               content: [{ type: "text", text: "Access denied: you have no scope assigned. Contact your org admin to set up column-level access." }],
               isError: true,
             };
           }
-          sinkFilter = buildSinkFilter(scope);
+          sinkFilter = buildSinkFilter(activeScope);
         }
       }
 
       const result = await executeSinkTextQuery(userId, connectorId, query, topK, config.openai.apiKey, namespace, sinkFilter);
+
+      let matches = result.matches;
+      if (activeScope) {
+        matches = sanitizeSinkResults(matches, activeScope);
+      }
+
       return {
         content: [{
           type: "text",
-          text: JSON.stringify({ matches: result.matches, namespace: result.namespace }, null, 2),
+          text: JSON.stringify({ matches, namespace: result.namespace }, null, 2),
         }],
       };
     }

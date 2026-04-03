@@ -35,6 +35,27 @@ Two-layer OAuth 2.1 architecture:
 - **RLS**: Row-level policies on those tables scope which rows each user can read (e.g. team membership); enforcement of “which columns may appear in queries” is **application logic** (SQL validator + Pinecone metadata filter), not warehouse RLS.
 - **Admins**: `org_admin` / `platform_admin` bypass column scope checks. Non-admin org users without a scope assignment get **deny-all** behavior for scoped query paths.
 
+### SQL Validator hardening (2025-04-03 pen test remediation)
+
+The SQL validator (`services/sql-validator.ts`) was hardened against 6 vulnerabilities found during an MCP exfil pen test:
+
+| # | Vulnerability | Severity | Mitigation |
+|---|---|---|---|
+| 1 | CTE (`WITH`) bypass — CTE definitions not walked | Critical | Recursive AST walker validates all CTE bodies before the outer query |
+| 2 | INFORMATION_SCHEMA bypass — unknown tables implicitly allowed | Critical | Deny-by-default: `resolveTableKey() === null` -> deny. System schema deny list (`information_schema`, `pg_catalog`, `account_usage`, etc.) |
+| 3 | Subquery-in-WHERE — predicates never walked | High | Recursive walker traverses WHERE, HAVING, ORDER BY, GROUP BY for nested SELECTs |
+| 4 | Scalar subquery-in-SELECT — non-`column_ref` expressions unchecked | High | Walker traverses all SELECT column expressions for nested SELECTs |
+| 5 | Pinecone sink metadata leakage — `schema`/`table`/`content` unfiltered | Medium | Post-query `sanitizeSinkResults()` drops matches whose `schema.table` is not in the user's scope |
+| 6 | Non-SELECT passthrough — validator `continue`d on non-select types | Medium | Non-SELECT statement types are rejected outright |
+
+**Design constraints preserved**:
+- Admins (`org_admin`, `platform_admin`) still bypass all scope checks
+- `SELECT *` rewrite to explicit scope-allowed columns still works at the top level
+- CTE aliases and derived-table aliases are tracked and excluded from deny-by-default table checks
+- Column validation at the top-level SELECT skips CTE-only FROM clauses (table-level security is enforced recursively inside CTEs)
+- Depth limit (32) prevents stack overflow from deeply nested queries
+- All dialect-specific AST shapes handled (BigQuery wraps column refs as objects, CTE bodies as `stmt.ast`)
+
 ## Canonical User Identity
 
 - Auth0 `sub` claim is mapped to an internal UUID in the `users` table

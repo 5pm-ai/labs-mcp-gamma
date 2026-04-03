@@ -90,6 +90,24 @@ export function buildSinkFilter(scope: UserScope): Record<string, unknown> {
   return { columns: { $in: unique } };
 }
 
+export function sanitizeSinkResults(
+  matches: Array<{ id: string; score?: number; metadata?: Record<string, unknown> }>,
+  scope: UserScope,
+): Array<{ id: string; score?: number; metadata?: Record<string, unknown> }> {
+  const allowedTables = new Set<string>();
+  for (const col of scope.columns) {
+    allowedTables.add(`${col.schemaName}.${col.tableName}`.toLowerCase());
+  }
+
+  return matches.filter((m) => {
+    if (!m.metadata) return false;
+    const schema = String(m.metadata.schema ?? "").toLowerCase();
+    const table = String(m.metadata.table ?? "").toLowerCase();
+    if (!schema || !table) return false;
+    return allowedTables.has(`${schema}.${table}`);
+  });
+}
+
 export function getConnectorColumnsLookup(scope: UserScope, connectorId: string): Map<string, Set<string>> {
   const tableColumns = new Map<string, Set<string>>();
   for (const col of scope.columns) {
