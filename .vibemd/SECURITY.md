@@ -57,6 +57,14 @@ The SQL validator (`services/sql-validator.ts`) was hardened against 6 vulnerabi
 | 9 | Error message oracle — denial errors reveal scope name and allowed table list | Low | Scope name and table list redacted from all error messages |
 | 10 | Sink metadata column list — column names visible in metadata for in-scope tables | Low | `sanitizeSinkResults()` now also filters `columns` array in metadata to only scope-allowed columns |
 
+### Round 3 hardening (2025-04-03)
+
+| # | Vulnerability | Severity | Mitigation |
+|---|---|---|---|
+| 11 | WHERE column refs not validated — boolean oracle via `WHERE denied_col = 'x'`, LIKE, BETWEEN, REGEXP | Medium-High | `collectColumnRefs()` now applied to `s.where` |
+| 12 | GROUP BY column refs not validated — cardinality inference of denied column distinct values | Medium-High | `collectColumnRefs()` now applied to `s.groupby` |
+| 13 | Sink `content` text field leaks denied column names and types | Low | `content` field stripped from metadata for scoped users |
+
 **Design constraints preserved**:
 - Admins (`org_admin`, `platform_admin`) still bypass all scope checks
 - `SELECT *` rewrite to explicit scope-allowed columns still works at the top level

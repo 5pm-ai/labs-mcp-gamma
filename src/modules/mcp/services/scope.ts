@@ -116,10 +116,12 @@ export function sanitizeSinkResults(
       const key = `${String(m.metadata.schema ?? "")}.${String(m.metadata.table ?? "")}`.toLowerCase();
       const allowedCols = allowedColsByTable.get(key);
       if (!allowedCols || !Array.isArray(m.metadata.columns)) return m;
+      const sanitized = { ...m.metadata };
+      delete sanitized.content;
       return {
         ...m,
         metadata: {
-          ...m.metadata,
+          ...sanitized,
           columns: (m.metadata.columns as string[]).filter(
             (c) => allowedCols.has(String(c).toLowerCase()),
           ),

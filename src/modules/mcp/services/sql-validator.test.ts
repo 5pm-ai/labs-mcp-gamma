@@ -236,6 +236,29 @@ describe("sql-validator (pen test remediations)", () => {
       expect(r.error).toMatch(/secret_col/i);
     });
 
+    it("blocks WHERE denied_col = 'value' (boolean oracle)", async () => {
+      const r = await validate("SELECT col_a FROM schema_a.table_1 WHERE secret_col = 'test'");
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("blocks WHERE LIKE on denied_col", async () => {
+      const r = await validate("SELECT col_a FROM schema_a.table_1 WHERE secret_col LIKE 'prefix%'");
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("blocks GROUP BY denied_col (cardinality leak)", async () => {
+      const r = await validate("SELECT col_a FROM schema_a.table_1 GROUP BY secret_col");
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("allows WHERE on in-scope columns", async () => {
+      const r = await validate("SELECT col_a FROM schema_a.table_1 WHERE col_b = 'test'");
+      expect(r.allowed).toBe(true);
+    });
+
     it("allows functions wrapping only in-scope columns", async () => {
       const r = await validate("SELECT UPPER(col_a), MAX(col_b) FROM schema_a.table_1");
       expect(r.allowed).toBe(true);
@@ -316,7 +339,7 @@ describe("sanitizeSinkResults (pen test #5)", () => {
     const result = sanitizeSinkResults(matches, scope);
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("1");
-    expect(result[0].metadata?.content).toBe("desc");
+    expect(result[0].metadata?.content).toBeUndefined();
   });
 
   it("drops matches with out-of-scope table metadata", () => {
@@ -350,6 +373,15 @@ describe("sanitizeSinkResults (pen test #5)", () => {
     const result = sanitizeSinkResults(matches, scope);
     expect(result).toHaveLength(2);
     expect(result.map((m) => m.id)).toEqual(["1", "3"]);
+  });
+
+  it("R3: strips content field from metadata (leaks denied column names)", () => {
+    const matches = [
+      { id: "1", score: 0.9, metadata: { schema: "schema_a", table: "table_1", content: "col_a: STRING, secret_col: STRING", columns: ["col_a"] } },
+    ];
+    const result = sanitizeSinkResults(matches, scope);
+    expect(result).toHaveLength(1);
+    expect(result[0].metadata?.content).toBeUndefined();
   });
 
   it("R2: strips out-of-scope column names from metadata", () => {

@@ -437,8 +437,10 @@ export async function validateAndRewriteSql(
 
     const allColRefs = [
       ...collectColumnRefs(columns),
+      ...collectColumnRefs(s.where),
       ...collectColumnRefs(s.having),
       ...collectColumnRefs(s.orderby),
+      ...collectColumnRefs(s.groupby),
     ];
 
     for (const ref of allColRefs) {
