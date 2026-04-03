@@ -400,6 +400,32 @@ describe("sql-validator (pen test remediations)", () => {
     });
   });
 
+  // ── Round 7: Named WINDOW clause bypass ──────────────────────────────
+  describe("R7: named WINDOW clause", () => {
+    it("blocks denied column in WINDOW PARTITION BY", async () => {
+      const r = await validate(
+        "SELECT col_a, COUNT(col_a) OVER w FROM schema_a.table_1 WINDOW w AS (PARTITION BY secret_col)",
+      );
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("blocks denied column in WINDOW ORDER BY", async () => {
+      const r = await validate(
+        "SELECT col_a, ROW_NUMBER() OVER w FROM schema_a.table_1 WINDOW w AS (ORDER BY secret_col)",
+      );
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("allows WINDOW with in-scope columns", async () => {
+      const r = await validate(
+        "SELECT col_a, COUNT(col_a) OVER w FROM schema_a.table_1 WINDOW w AS (PARTITION BY col_b)",
+      );
+      expect(r.allowed).toBe(true);
+    });
+  });
+
   // ── Legitimate queries (no regression) ───────────────────────────────
   describe("legitimate queries", () => {
     it("allows simple SELECT with in-scope columns", async () => {

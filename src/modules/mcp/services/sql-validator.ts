@@ -362,20 +362,21 @@ function validateSelectNode(
     }
   }
 
-  for (const clause of [s.where, s.having, s.orderby, s.groupby]) {
+  for (const clause of [s.where, s.having, s.orderby, s.groupby, s.window]) {
     if (clause) {
       const err = walkForNestedSelects(clause, localCtx, depth);
       if (err) return err;
     }
   }
 
-  // 4. Column validation at THIS SELECT level (covers CTEs, derived tables, etc.)
+  // 5. Column validation at THIS SELECT level (covers CTEs, derived tables, etc.)
   const allColRefs = [
     ...collectColumnRefs(s.columns),
     ...collectColumnRefs(s.where),
     ...collectColumnRefs(s.having),
     ...collectColumnRefs(s.orderby),
     ...collectColumnRefs(s.groupby),
+    ...collectColumnRefs(s.window),
   ];
   if (Array.isArray(s.from)) {
     for (const f of s.from) {
