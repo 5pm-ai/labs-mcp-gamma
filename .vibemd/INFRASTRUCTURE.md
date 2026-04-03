@@ -70,6 +70,12 @@
 |---|---|---|
 | KMS_KEY_NAME | Plain env var | GCP KMS key resource name for warehouse credential decryption |
 
+## Operations Scripts
+
+| Name/ID | Type | Purpose | Location/Path | Lifecycle | Owner | Date | Notes |
+|---|---|---|---|---|---|---|---|
+| rotate-secrets.sh | script | Idempotent secret rotation across MCP + ctrl repos | scripts/rotate-secrets.sh | persistent | braun | 2026-04-03 | Reads .env, pushes to Secret Manager, redeploys Cloud Run. See scripts/ROTATE_SECRETS.md |
+
 ## Local Dev Infrastructure
 
 | Name/ID | Type | Purpose | Location/Path | Lifecycle | Owner | Date | Notes |
