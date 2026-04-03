@@ -286,6 +286,49 @@ describe("sql-validator (pen test remediations)", () => {
     });
   });
 
+  // ── Round 4: CTE column aliasing + JOIN ON bypass ───────────────────
+  describe("R4: CTE column aliasing bypass", () => {
+    it("blocks denied column aliased inside CTE", async () => {
+      const r = await validate(
+        "WITH x AS (SELECT secret_col AS alias FROM schema_a.table_1) SELECT alias FROM x",
+      );
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("blocks denied column in derived table subquery", async () => {
+      const r = await validate(
+        "SELECT d.alias FROM (SELECT secret_col AS alias FROM schema_a.table_1) AS d",
+      );
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("allows CTE selecting only in-scope columns", async () => {
+      const r = await validate(
+        "WITH x AS (SELECT col_a AS alias FROM schema_a.table_1) SELECT alias FROM x",
+      );
+      expect(r.allowed).toBe(true);
+    });
+  });
+
+  describe("R4: JOIN ON condition bypass", () => {
+    it("blocks denied column in JOIN ON condition", async () => {
+      const r = await validate(
+        "SELECT t1.col_a FROM schema_a.table_1 AS t1 JOIN schema_a.table_1 AS t2 ON t1.secret_col = t2.col_a",
+      );
+      expect(r.allowed).toBe(false);
+      expect(r.error).toMatch(/secret_col/i);
+    });
+
+    it("allows JOIN ON with only in-scope columns", async () => {
+      const r = await validate(
+        "SELECT t1.col_a FROM schema_a.table_1 AS t1 JOIN schema_a.table_1 AS t2 ON t1.col_a = t2.col_b",
+      );
+      expect(r.allowed).toBe(true);
+    });
+  });
+
   // ── Legitimate queries (no regression) ───────────────────────────────
   describe("legitimate queries", () => {
     it("allows simple SELECT with in-scope columns", async () => {
@@ -302,7 +345,7 @@ describe("sql-validator (pen test remediations)", () => {
     it("denies out-of-scope columns at top level", async () => {
       const r = await validate("SELECT secret_col FROM schema_a.table_1");
       expect(r.allowed).toBe(false);
-      expect(r.deniedColumns).toContain("secret_col");
+      expect(r.error).toMatch(/secret_col/i);
     });
 
     it("allows WHERE clause without subquery", async () => {

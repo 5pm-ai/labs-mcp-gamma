@@ -65,6 +65,13 @@ The SQL validator (`services/sql-validator.ts`) was hardened against 6 vulnerabi
 | 12 | GROUP BY column refs not validated — cardinality inference of denied column distinct values | Medium-High | `collectColumnRefs()` now applied to `s.groupby` |
 | 13 | Sink `content` text field leaks denied column names and types | Low | `content` field stripped from metadata for scoped users |
 
+### Round 4 hardening (2025-04-03)
+
+| # | Vulnerability | Severity | Mitigation |
+|---|---|---|---|
+| 14 | CTE column aliasing bypass — column validation only at top level, CTEs alias denied cols freely | Critical | Column validation moved into `validateSelectNode` — runs at every recursion depth (CTEs, derived tables, subqueries) |
+| 15 | JOIN ON/USING condition bypass — FROM clause not column-validated | Medium-High | `collectColumnRefs` now applied to `fObj.on` and `fObj.using` inside FROM items |
+
 **Design constraints preserved**:
 - Admins (`org_admin`, `platform_admin`) still bypass all scope checks
 - `SELECT *` rewrite to explicit scope-allowed columns still works at the top level
