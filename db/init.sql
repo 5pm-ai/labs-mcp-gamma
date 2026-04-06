@@ -105,9 +105,13 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON oauth_clients TO mcp_app;
 -- Allows mcp_app full access. Replace with scoped policies when RLS
 -- rules are defined (e.g., WHERE user_id = current_setting('app.user_id')).
 -- =============================================================================
+DROP POLICY IF EXISTS allow_all_users ON users;
 CREATE POLICY allow_all_users ON users FOR ALL TO mcp_app USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS allow_all_teams ON teams;
 CREATE POLICY allow_all_teams ON teams FOR ALL TO mcp_app USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS allow_all_team_members ON team_members;
 CREATE POLICY allow_all_team_members ON team_members FOR ALL TO mcp_app USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS allow_all_oauth_clients ON oauth_clients;
 CREATE POLICY allow_all_oauth_clients ON oauth_clients FOR ALL TO mcp_app USING (true) WITH CHECK (true);
 
 -- =============================================================================

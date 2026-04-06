@@ -1,3 +1,29 @@
+Prompt Template:
+
+************************************************************************
+************************************************************************
+************************************************************************
+
+this mcp source is in this repo and has docs here @.vibemd and the saas control plane for it is in `~/ai.5pm.labs/labs-saas-ctrl` which has it's own `.vibemd/` docs; they both share the db model with tight RLS.
+
+what would it take to support the following is it possible:
+
+```
+
+```
+
+---
+
+you must follow current networking, infrastructure, and security patterns as current features. you must consider both the mcp db model and the saas ctrl db model.
+
+you must send frequent slack message embeds with status/progress updates and final results (even if have to stop) to channel id `C0APUJN1547` (these should be short/succinct/tl;dr, but use emojis). 
+
+you must follow the rules in relative `.vibemd/RULES.md`.
+
+************************************************************************
+************************************************************************
+************************************************************************
+
 @.vibemd/ what would it take to support the following, is it possible:
 
 ```
@@ -54,3 +80,4 @@ you must follow the rules in `.vibemd/RULES.md`.
 no code, just high level.
 
 ************************************************************************
+
