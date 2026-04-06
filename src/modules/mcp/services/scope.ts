@@ -16,7 +16,7 @@ export interface UserScope {
 export async function resolveUserScope(userId: string): Promise<UserScope | null> {
   const result = await withUserContext(userId, async (client) => {
     const membership = await client.query<{ team_id: string; role: string }>(
-      "SELECT team_id, role FROM team_members WHERE user_id = $1 LIMIT 1",
+      "SELECT team_id, role FROM team_members WHERE user_id = $1 AND deleted_at IS NULL LIMIT 1",
       [userId],
     );
     if (membership.rows.length === 0) return null;
