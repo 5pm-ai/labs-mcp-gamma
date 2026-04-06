@@ -1,7 +1,5 @@
-Prompt Template:
-
 ************************************************************************
-************************************************************************
+******************* Prompt Template ************************************
 ************************************************************************
 
 this mcp source is in this repo and has docs here @.vibemd and the saas control plane for it is in `~/ai.5pm.labs/labs-saas-ctrl` which has it's own `.vibemd/` docs; they both share the db model with tight RLS.
@@ -21,7 +19,7 @@ you must send frequent slack message embeds with status/progress updates and fin
 you must follow the rules in relative `.vibemd/RULES.md`.
 
 ************************************************************************
-************************************************************************
+***************** Existing Prompts *************************************
 ************************************************************************
 
 @.vibemd/ what would it take to support the following, is it possible:
@@ -81,3 +79,18 @@ no code, just high level.
 
 ************************************************************************
 
+this mcp source is in this repo and has docs here @.vibemd and the saas control plane for it is in `~/ai.5pm.labs/labs-saas-ctrl` which has it's own `.vibemd/` docs; they both share the db model with tight RLS.
+
+what would it take to support the following is it possible:
+
+```
+there's an issue, org admins removing scopes from team members org users, there's no way to unassigned a scope to a user without assigning the scope to another user, will need to be able to keep the scope, should be able to exist without any assigned users.
+```
+
+---
+
+you must follow current networking, infrastructure, and security patterns as current features. you must consider both the mcp db model and the saas ctrl db model.
+
+you must send frequent slack message embeds with status/progress updates and final results (even if have to stop) to channel id `C0APUJN1547` (these should be short/succinct/tl;dr, but use emojis). 
+
+you must follow the rules in relative `.vibemd/RULES.md`.
