@@ -25,7 +25,7 @@ Future multi-tenant support (schema only, no CRUD).
 | updated_at | TIMESTAMPTZ | NOT NULL DEFAULT now() | |
 
 ### team_members
-Many-to-many users-teams.
+Many-to-many users-teams. Control plane **soft-deletes** memberships (`deleted_at`) instead of hard-deleting rows; **partial unique index** `idx_team_members_user_active` on `(user_id) WHERE deleted_at IS NULL` enforces **one active team per user**.
 
 | Column | Type | Constraints | Description |
 |---|---|---|---|
@@ -33,6 +33,7 @@ Many-to-many users-teams.
 | user_id | UUID | FK users(id) CASCADE | |
 | role | TEXT | NOT NULL DEFAULT 'member' | |
 | created_at | TIMESTAMPTZ | NOT NULL DEFAULT now() | |
+| deleted_at | TIMESTAMPTZ | | Soft-remove; non-NULL = no longer an active member |
 
 PK: `(team_id, user_id)`
 
@@ -167,7 +168,7 @@ Scope definitions (tenant-scoped permission bundles). Full DDL lives in **labs-s
 Additional columns (e.g. team ownership) are defined in saas-ctrl; MCP only selects `id` and `name` today.
 
 ### scope_members
-Maps users to a single scope membership (enforced in application logic).
+Maps users to a single scope membership (enforced by unique index on `user_id`). A scope may have zero members (pre-configured but not yet assigned); unscoped org users retain normal unrestricted team access.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -193,6 +194,6 @@ Vectors upserted during ingest carry metadata used for retrieval and scope filte
 
 | Role | Access |
 |------|--------|
-| ingest_app | SELECT on warehouse_connectors, sink_connectors, team_members (permissive); SELECT+UPDATE on ingests; SELECT+INSERT+UPDATE on ingest_runs, ingest_run_stages; SELECT+INSERT on ingest_run_logs |
+| ingest_app | SELECT on warehouse_connectors, sink_connectors, team_members (permissive); SELECT+UPDATE on ingests; SELECT+INSERT+UPDATE on ingest_runs, ingest_run_stages; SELECT+INSERT on ingest_run_logs. Application and MCP scope logic treat only **`team_members` rows with `deleted_at IS NULL`** as active memberships. |
 | ctrl_app | Full CRUD on ingests, SELECT+INSERT+UPDATE on ingest_runs, SELECT on stages/logs, **SELECT on `oauth_clients_stats` view** (platform admin analytics — view exposes only `id`, `created_at`, `last_used_at`) |
 | mcp_app | SELECT on ingests, ingest_runs (read-only for tool awareness); **SELECT on `connector_columns`, `scopes`, `scope_members`, `scope_columns`** (scope resolution and SQL validation). `warehouse_connectors` SELECT includes `has_write_access` and `write_access_acknowledged` columns (added for write-access detection feature). |

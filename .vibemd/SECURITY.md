@@ -33,7 +33,7 @@ Two-layer OAuth 2.1 architecture:
 - **Where it runs**: Scopes are enforced at the **MCP tool layer** (warehouse and sink query handlers in `services/mcp.ts`), not inside Snowflake/BigQuery/ClickHouse as native row/column grants. The warehouse still sees only SQL the MCP server has already validated or issued on behalf of an admin.
 - **Data**: Scope definitions and allowlists live in Postgres (`scopes`, `scope_members`, `scope_columns`; see **DATA_MODEL.md**). **`mcp_app`** reads them with the same **`withUserContext`** session as other tenant-aware queries.
 - **RLS**: Row-level policies on those tables scope which rows each user can read (e.g. team membership); enforcement of “which columns may appear in queries” is **application logic** (SQL validator + Pinecone metadata filter), not warehouse RLS.
-- **Admins**: `org_admin` / `platform_admin` bypass column scope checks. Non-admin org users without a scope assignment get **deny-all** behavior for scoped query paths.
+- **Admins**: `org_admin` / `platform_admin` bypass column scope checks. Non-admin org users without a scope assignment retain **normal unrestricted team access** — scopes are an additive restriction layer, not deny-by-default. Assigning a scope to a user *restricts* their access to the scope's column allowlist. Scopes may exist with zero assigned members (for pre-configuration).
 
 ### SQL Validator hardening (2025-04-03 pen test remediation)
 

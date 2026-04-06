@@ -194,3 +194,21 @@
 **Resolution:** Replaced bare 302 redirects with HTML interstitial pages (`renderRedirectPage`) at both the authorize→Auth0 step and the callback→cursor:// step. The page auto-redirects via JS and provides a clickable "Continue" button as fallback, giving the browser the user gesture it needs.
 **Prevention:** Never use a bare 302 to redirect to a custom URI scheme. Always serve an HTML page with a visible link/button. This applies to any OAuth flow where the final redirect targets a non-HTTP scheme (Cursor, VS Code, Electron apps, etc.).
 **Refs:** `src/modules/auth/auth/provider.ts`, `src/modules/auth/handlers/auth0-callback.ts`, `src/modules/auth/helpers/redirect-page.ts`
+
+---
+
+### [2026-04-06] Missing `DELETE` on `users` for `ctrl_app` blocked placeholder cleanup
+
+**Context:** Control plane auth deletes pending-invite placeholder `users` rows when cleaning up state. Postgres grants for `ctrl_app` originally omitted **`DELETE` on `users`**.
+
+**Symptoms:** Deletes failed at the database layer; affected users could get stuck with inconsistent invite state. In the worst case, auth repeatedly failed (**401** on `/api/*`) when the app could not remove a placeholder user tied to a pending invite flow.
+
+**Root Cause:** `GRANT` list for `ctrl_app` included `SELECT`/`INSERT`/`UPDATE` on `users` but not `DELETE`. Any code path that must remove a user row (including placeholder users created before full signup) requires that privilege.
+
+**Resolution:** Added `GRANT DELETE ON users TO ctrl_app` in **`labs-saas-ctrl/db/init.sql`**.
+
+**Prevention:**
+- When a role performs lifecycle cleanup on a table, verify **all** required DML grants (`DELETE` included), not only the happy-path `INSERT`/`UPDATE`.
+- If auth or onboarding creates ephemeral rows in shared identity tables, treat **`DELETE`** as a first-class requirement for the application role.
+
+**Refs:** `labs-saas-ctrl/db/init.sql` (grants for `ctrl_app`)

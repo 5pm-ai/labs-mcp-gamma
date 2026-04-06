@@ -76,7 +76,7 @@ Column-level access for org users is enforced **inside MCP tool handlers** (not 
 
 2. **Warehouse (SQL) queries** — For scoped users, SQL is parsed with **`node-sql-parser`**, `SELECT *` is rewritten to explicit columns, and every referenced column is checked against the scope and the **`connector_columns`** catalog (plus connector/schema/table alignment). Invalid or over-broad queries are rejected before execution. Admins bypass validation.
 
-**Membership edge cases**: Users in `team_members` without a scope row and without an admin role get **no** warehouse or sink query access (empty allowlist / deny-all filter). Scope resolution reads **`scopes`**, **`scope_members`**, and **`scope_columns`** under the same **`mcp_app`** + RLS context as other MCP reads.
+**Membership edge cases**: Users in `team_members` without a scope row retain **normal unrestricted team access** — scopes are an additive restriction, not a deny-by-default gate. Assigning a scope *restricts* a user's access to the scope's column allowlist. Admins (`org_admin`, `platform_admin`) always bypass scope checks regardless. Scope resolution reads **`scopes`**, **`scope_members`**, and **`scope_columns`** under the same **`mcp_app`** + RLS context as other MCP reads. Scopes may exist with zero assigned members (for pre-configuration); they restrict no one until members are added.
 
 ## Production Deployment (GCP us-east4)
 
