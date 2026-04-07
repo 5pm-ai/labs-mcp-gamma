@@ -94,3 +94,28 @@ you must follow current networking, infrastructure, and security patterns as cur
 you must send frequent slack message embeds with status/progress updates and final results (even if have to stop) to channel id `C0APUJN1547` (these should be short/succinct/tl;dr, but use emojis). 
 
 you must follow the rules in relative `.vibemd/RULES.md`.
+
+********* RUN THIS *****************************************************
+
+this mcp source is in this repo and has docs here @.vibemd and the saas control plane for it is in `~/ai.5pm.labs/labs-saas-ctrl` which has it's own `.vibemd/` docs; they both share the db model with tight RLS.
+
+what would it take to support the following is it possible:
+
+```
+an agent made a comment: "It's a Cloud SQL connection exhaustion issue — "remaining connection slots are reserved." This happens when the test runner has too many concurrent connections to gamma's Cloud SQL (which has limited connection slots for the ctrl_app role). This is transient and not related to my code changes. Let me re-run one more time." can you look in to ti, are there any other related issues?
+
+then given our app need you to investigate: "* 3rd party provider quota checks — Stripe, Postmark, Auth0, Pinecone, Snowflake, GCP (need you to check for 500 users where potential problems could be)
+* :shield: Security audit — rate limiting, account abuse, token security for gamma cloud (expect 500 users ay 75% usage daily with mcp)"
+```
+
+---
+
+you must follow current networking, infrastructure, and security patterns as current features. you must consider both the mcp db model and the saas ctrl db model.
+
+you must send frequent slack message embeds with status/progress updates and final results (even if have to stop) to channel id `C0APUJN1547` (these should be short/succinct/tl;dr, but use emojis). 
+
+no code, just high level.
+
+DO NOT CHANGE CODE OR DEPLOY CODE.
+
+you must follow the rules in relative `.vibemd/RULES.md`.

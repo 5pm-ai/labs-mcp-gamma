@@ -129,6 +129,10 @@ Six preconfigured ModSecurity CRS rule sets are active in **preview mode** (log-
 | 1004 | protocolattack-v33-stable | Protocol attacks (HTTP request smuggling, response splitting) |
 | 1005 | sessionfixation-v33-stable | Session fixation |
 
+### MCP Transport Rate Limiting
+
+The `/mcp` endpoint (Streamable HTTP transport) is rate-limited at 200 requests/minute per IP via `express-rate-limit` in the MCP module. Standard `RateLimit-*` headers are returned. `trust proxy` is configured on the Express app (2 hops in production for Cloudflare + GCP LB, loopback in dev) so rate limiting correctly identifies individual clients behind the proxy chain.
+
 ### Edge Rate Limiting
 
 Not currently active at the Cloud Armor layer. Application-layer rate limiting via `express-rate-limit` is the primary mechanism (per-endpoint, per-IP). A Cloud Armor edge rate limit rule scoped to Cloudflare IPs can be added later if volumetric abuse is observed before reaching Cloud Run.
