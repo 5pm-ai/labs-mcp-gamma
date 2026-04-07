@@ -84,12 +84,44 @@
 | postgres (docker) | container | Durable client registration, user identity | localhost:5433 | persistent | dev | 2026-03-17 | Volume: postgres-data |
 | db/init.sql | schema | Postgres schema init (roles, tables, RLS) | db/init.sql | persistent | dev | 2026-03-17 | Auto-applied on first container start |
 
+## GCP Project: `ai-5pm-mcp` (Production)
+
+| Name/ID | Type | Purpose | Location/Path | Lifecycle | Owner | Date | Notes |
+|---|---|---|---|---|---|---|---|
+| prod-vpc | VPC | Isolated custom-mode VPC | us-east4, GCP | persistent | braun | 2026-04-07 | Custom subnet mode, mirrors gamma-vpc topology |
+| sn-app | Subnet | Cloud Run Direct VPC Egress | us-east4, 10.10.0.0/24 | persistent | braun | 2026-04-07 | PGA enabled |
+| sn-data | Subnet | Data tier (reserved) | us-east4, 10.10.1.0/24 | persistent | braun | 2026-04-07 | PGA enabled |
+| sn-mgmt | Subnet | Bastion / management | us-east4, 10.10.2.0/28 | persistent | braun | 2026-04-07 | PGA enabled |
+| google-managed-services | PSA range | Cloud SQL / Redis private peering | 10.20.0.0/16, GCP | persistent | braun | 2026-04-07 | |
+| prod-router | Cloud Router | BGP control plane for NAT | us-east4 | persistent | braun | 2026-04-07 | |
+| prod-nat | Cloud NAT | Outbound internet for private resources | us-east4 | persistent | braun | 2026-04-07 | Covers sn-app, sn-mgmt |
+| prod-nat-ip-1 | Static IP | NAT egress IP | 34.11.9.234, us-east4 | persistent | braun | 2026-04-07 | |
+| prod-lb-ip | Static IP | External LB frontend | 34.8.216.219, global | persistent | braun | 2026-04-07 | Cloudflare A record target |
+| prod-pg | Cloud SQL | PostgreSQL 16 (Enterprise, db-custom-2-7680) | us-east4, private IP 10.20.0.3 | persistent | braun | 2026-04-07 | Tier 2: 2 vCPU, 7.5GB RAM, ~200 max conn. No public IP. |
+| prod-redis | Memorystore | Redis 7.2 (Standard HA, 1GB) | us-east4, private IP 10.20.1.4:6378 | persistent | braun | 2026-04-07 | TLS, PSA connect mode, HA failover replica |
+| prod-bastion | Compute Engine | Bastion host (e2-micro, Debian 12) | us-east4-a, 10.10.2.2 | persistent | braun | 2026-04-07 | No public IP. IAP SSH only. SA: sa-bastion |
+| prod-docker | Artifact Registry | Docker image repository | us-east4 | persistent | braun | 2026-04-07 | IAM-gated |
+| prod-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-04-07 | Min 2 instances, 1GiB. SA: sa-mcp-server |
+| prod-ctrl-api | Cloud Run Service | Control plane API | us-east4 | persistent | braun | 2026-04-07 | Min 2 instances, 512MiB. SA: sa-mcp-server |
+| prod-ctrl | Cloud Run Service | Control plane SPA | us-east4 | persistent | braun | 2026-04-07 | Min 1 instance, 256MiB. nginx static |
+| db-migrate | Cloud Run Job | Database schema init | us-east4 | persistent | braun | 2026-04-07 | SA: sa-db-admin |
+| prod-ingest-worker | Cloud Run Job | Ingest pipeline worker | us-east4 | persistent | braun | 2026-04-07 | SA: sa-ingest-worker |
+| prod-keys | KMS keyring | Credential encryption keys | us-east4 | persistent | braun | 2026-04-07 | |
+| prod-credentials-key | KMS key | Envelope encrypt warehouse/sink creds | us-east4 | persistent | braun | 2026-04-07 | |
+| prod-waf-policy | Cloud Armor | WAF + origin restriction | global | persistent | braun | 2026-04-07 | Cloudflare IP restriction enforced |
+| prod-5pm-ai-origin | SSL Certificate | Cloudflare Origin CA (self-managed) | global | persistent | braun | 2026-04-07 | Wildcard *.5pm.ai, same cert as gamma |
+| googleapis-internal | Cloud DNS Zone | Private zone for googleapis restricted VIPs | prod-vpc | persistent | braun | 2026-04-07 | Required for Cloud Run Jobs VPC egress |
+
 ## External Services
 
 | Name/ID | Type | Purpose | Location | Lifecycle | Owner | Date | Notes |
 |---|---|---|---|---|---|---|---|
-| Auth0 App (MCP Server) | application | Regular Web App for OIDC upstream | ai-5pm-labs.us.auth0.com | persistent | braun | 2026-03-17 | client_id: CDMzP2gS1aCz84Fy4GiAF22SB4WQmp3I |
+| Auth0 App (MCP Server) | application | Regular Web App for OIDC upstream (gamma) | ai-5pm-labs.us.auth0.com | persistent | braun | 2026-03-17 | client_id: CDMzP2gS1aCz84Fy4GiAF22SB4WQmp3I |
+| Auth0 App (MCP Server prod) | application | Regular Web App for OIDC upstream (prod) | ai-5pm-labs.us.auth0.com | persistent | braun | 2026-04-07 | client_id: ImD6wLg8n3BNlZ9thpkmlx2dg67TlSFV |
 | Auth0 App (M2M) | application | M2M for Account Linking Action | ai-5pm-labs.us.auth0.com | persistent | braun | 2026-03-17 | client_id: uviokzty2SoteJN7mW5OTiZ4vcsRWQ5l |
 | Auth0 Action | action | Account Linking by Email | ai-5pm-labs.us.auth0.com | persistent | braun | 2026-03-17 | ID: 0bdb3e24-9c4a-4224-9414-bb000598fff2 |
-| Cloudflare DNS | DNS | gamma.5pm.ai A record (proxied) | Cloudflare 5pm.ai zone | persistent | braun | 2026-03-17 | A record -> 34.54.83.204, SSL/TLS: Full |
+| Auth0 API (gamma) | resource server | JWT audience for gamma | ai-5pm-labs.us.auth0.com | persistent | braun | 2026-03-23 | identifier: https://api.gamma.5pm.ai |
+| Auth0 API (prod) | resource server | JWT audience for prod | ai-5pm-labs.us.auth0.com | persistent | braun | 2026-04-07 | identifier: https://api.mcp.5pm.ai |
+| Cloudflare DNS (gamma) | DNS | gamma.5pm.ai A record (proxied) | Cloudflare 5pm.ai zone | persistent | braun | 2026-03-17 | A record -> 34.54.83.204, SSL/TLS: Full |
+| Cloudflare DNS (prod) | DNS | mcp.5pm.ai A record (proxied) | Cloudflare 5pm.ai zone | persistent | braun | 2026-04-07 | A record -> 34.8.216.219, SSL/TLS: Full |
 | Cloudflare Origin CA | certificate | TLS between Cloudflare and GCP LB | .cloudflare/ (gitignored) | persistent | braun | 2026-03-17 | Wildcard *.5pm.ai, expires 2040-06-06 |

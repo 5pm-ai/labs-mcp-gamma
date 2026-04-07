@@ -103,7 +103,7 @@ stripe listen --forward-to localhost:8081/api/webhooks/stripe
 
 The `docker-compose.yml` in this repo mounts both `db/init.sql` (MCP schema) and `../labs-saas-ctrl/db/init.sql` (ctrl schema) into the Postgres container, so both schemas are initialized on first start.
 
-## Testing Against gamma.5pm.ai
+## Testing Against gamma.5pm.ai (Cloud Dev)
 
 See `labs-saas-ctrl/.vibemd/TESTING.md` § "Testing Against gamma.5pm.ai" for IAP tunnel setup and env patching instructions. The MCP e2e live mode can also test against gamma:
 
@@ -111,4 +111,26 @@ See `labs-saas-ctrl/.vibemd/TESTING.md` § "Testing Against gamma.5pm.ai" for IA
 BASE_URI=https://gamma.5pm.ai npm run test:e2e:live
 ```
 
-This verifies OAuth metadata, DCR, and 401 enforcement on the production MCP server. Full authenticated testing against gamma uses the saas-ctrl wizard e2e with patched `.env`.
+This verifies OAuth metadata, DCR, and 401 enforcement on the gamma MCP server. Full authenticated testing against gamma uses the saas-ctrl wizard e2e with patched `.env`.
+
+## Testing Against mcp.5pm.ai (Production)
+
+Same pattern as gamma but targeting the production project (`ai-5pm-mcp`).
+
+### MCP protocol tests
+
+```bash
+BASE_URI=https://mcp.5pm.ai npm run test:e2e:live
+```
+
+### Full integration tests (via labs-saas-ctrl)
+
+See `labs-saas-ctrl/.vibemd/TESTING.md` § "Testing Against mcp.5pm.ai" for IAP tunnel setup and env patching.
+
+## Environment Reference
+
+| Environment | Domain | GCP Project | DB Tunnel Port | Purpose |
+|---|---|---|---|---|
+| Local | `localhost:3232` / `localhost:8080` | N/A (Docker) | 5433 | Development |
+| Gamma Cloud | `gamma.5pm.ai` | `ai-5pm-labs` | 5434 (IAP) | Cloud dev / staging |
+| Production | `mcp.5pm.ai` | `ai-5pm-mcp` | 5435 (IAP) | Production |
