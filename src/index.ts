@@ -203,9 +203,13 @@ async function main() {
     legacyHeaders: false,
   });
 
-  // Favicon (environment-aware: local vs production)
   app.get('/favicon.ico', splashPageLimiter, (req, res) => {
-    const filename = config.nodeEnv === 'production' ? 'favicon-prod.ico' : 'favicon-local.ico';
+    const envToFavicon: Record<string, string> = {
+      production: 'favicon-prod.ico',
+      gamma: 'favicon-gamma.ico',
+      local: 'favicon-local.ico',
+    };
+    const filename = envToFavicon[config.deploymentEnv] || 'favicon-local.ico';
     res.sendFile(path.join(__dirname, 'static', filename));
   });
 

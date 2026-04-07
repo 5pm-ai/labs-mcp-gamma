@@ -12,6 +12,7 @@ export interface Config {
   port: number;
   baseUri: string;
   nodeEnv: string;
+  deploymentEnv: 'local' | 'gamma' | 'production';
 
   auth: {
     mode: 'internal' | 'external' | 'auth_server';
@@ -67,6 +68,7 @@ function loadConfig(): Config {
     port: Number(process.env.PORT) || 3232,
     baseUri: process.env.BASE_URI || 'http://localhost:3232',
     nodeEnv: process.env.NODE_ENV || 'development',
+    deploymentEnv: (process.env.DEPLOYMENT_ENV || 'local') as 'local' | 'gamma' | 'production',
 
     auth: {
       mode: authMode,
