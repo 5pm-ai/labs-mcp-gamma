@@ -17,7 +17,7 @@ export function getPool(): pg.Pool {
 }
 
 export async function initPostgres(databaseUrl: string): Promise<void> {
-  pool = new Pool({ connectionString: databaseUrl });
+  pool = new Pool({ connectionString: databaseUrl, max: 3 });
 
   pool.on('error', (err) => {
     logger.error('Unexpected Postgres pool error', err);

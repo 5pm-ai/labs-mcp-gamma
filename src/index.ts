@@ -46,6 +46,8 @@ async function main() {
 
   const app = express();
 
+  app.set('trust proxy', config.nodeEnv === 'production' ? 2 : 'loopback');
+
   // Basic middleware
   // Intentionally permissive CORS for public MCP reference server
   // This allows any MCP client to test against this reference implementation

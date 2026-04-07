@@ -48,6 +48,14 @@ export class MCPModule {
   private setupRouter(): Router {
     const router = Router();
 
+    const mcpTransportLimiter = rateLimit({
+      windowMs: 60 * 1000,
+      max: 200,
+      message: 'Too many MCP requests',
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
+
     // Rate limiter for static assets
     const staticAssetLimiter = rateLimit({
       windowMs: 60 * 1000, // 1 minute
@@ -92,9 +100,9 @@ export class MCPModule {
     const bearerAuth = requireBearerAuth(bearerAuthOptions);
 
     // MCP endpoints - Streamable HTTP transport (recommended)
-    router.get('/mcp', cors(corsOptions), bearerAuth, securityHeaders, handleStreamableHTTP);
-    router.post('/mcp', cors(corsOptions), bearerAuth, securityHeaders, handleStreamableHTTP);
-    router.delete('/mcp', cors(corsOptions), bearerAuth, securityHeaders, handleStreamableHTTP);
+    router.get('/mcp', cors(corsOptions), mcpTransportLimiter, bearerAuth, securityHeaders, handleStreamableHTTP);
+    router.post('/mcp', cors(corsOptions), mcpTransportLimiter, bearerAuth, securityHeaders, handleStreamableHTTP);
+    router.delete('/mcp', cors(corsOptions), mcpTransportLimiter, bearerAuth, securityHeaders, handleStreamableHTTP);
 
     // MCP endpoints - SSE transport (legacy)
     router.get('/sse', cors(corsOptions), bearerAuth, sseHeaders, handleSSEConnection);

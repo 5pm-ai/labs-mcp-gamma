@@ -54,6 +54,7 @@ async function main(): Promise<void> {
     connectionString: databaseUrl,
     ssl: databaseUrl!.includes("sslmode=no-verify") ? { rejectUnauthorized: false } : undefined,
     connectionTimeoutMillis: 10000,
+    max: 2,
   });
   pool.on("error", (err) => console.error("Pool error:", err));
 
