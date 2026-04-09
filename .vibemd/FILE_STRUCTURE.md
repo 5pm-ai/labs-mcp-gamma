@@ -165,6 +165,7 @@ The **ingest-worker** container image is built from **`Dockerfile.worker`** (see
 |---|---|
 | `index.html` | Server splash page |
 | `styles.css` | Splash page styles |
+| `5pm-logo-white.svg` | SVG brand logo (white fill, inverted via CSS for light theme) |
 | `mcp.png` | MCP logo |
 | `favicon-local.ico` | Favicon served in development (`NODE_ENV != production`) |
 | `favicon-local.png` | Local favicon (PNG variant) |
