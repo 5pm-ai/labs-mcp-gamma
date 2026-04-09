@@ -68,20 +68,15 @@ header {
     gap: 1.5rem;
 }
 
-.logo-mark {
-    width: 56px;
-    height: 56px;
-    background: var(--accent);
-    color: var(--bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.1rem;
-    font-weight: 800;
-    border-radius: 12px;
-    letter-spacing: -0.03em;
+.brand-logo {
+    height: 40px;
+    width: auto;
     flex-shrink: 0;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    transition: filter 0.3s ease;
+}
+
+[data-theme="light"] .brand-logo {
+    filter: brightness(0);
 }
 
 h1 {
@@ -333,11 +328,8 @@ footer a:hover {
         gap: 1rem;
     }
 
-    .logo-mark {
-        width: 44px;
-        height: 44px;
-        font-size: 0.95rem;
-        border-radius: 10px;
+    .brand-logo {
+        height: 32px;
     }
 
     .features {
