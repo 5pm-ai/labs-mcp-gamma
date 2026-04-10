@@ -5,6 +5,8 @@ import type {
 } from "../types.js";
 import { registerConnector } from "../registry.js";
 
+const SYSTEM_DATABASES = new Set(["SNOWFLAKE", "SNOWFLAKE_SAMPLE_DATA"]);
+
 class SnowflakeConnector implements WarehouseConnector {
   private conn: snowflake.Connection;
   private connected = false;
@@ -40,6 +42,10 @@ class SnowflakeConnector implements WarehouseConnector {
     this.conn = snowflake.createConnection(connOpts);
   }
 
+  private get dbPrefix(): string {
+    return this.database ? `${this.database}.` : "";
+  }
+
   private async ensureConnected(): Promise<void> {
     if (!this.connected) {
       await new Promise<void>((resolve, reject) => {
@@ -62,6 +68,14 @@ class SnowflakeConnector implements WarehouseConnector {
     });
   }
 
+  private async discoverDatabases(): Promise<string[]> {
+    if (this.database) return [this.database];
+    const rows = await this.runQuery("SHOW DATABASES");
+    return rows
+      .map((r) => (r.name ?? r.NAME) as string)
+      .filter((name) => name && !SYSTEM_DATABASES.has(name.toUpperCase()));
+  }
+
   async execute(sql: string): Promise<WarehouseResult> {
     const rows = await this.runQuery(sql);
     if (rows.length === 0) {
@@ -71,16 +85,16 @@ class SnowflakeConnector implements WarehouseConnector {
     return { columns, rows, rowCount: rows.length };
   }
 
-  async listSchemas(): Promise<SchemaInfo[]> {
+  private async listSchemasForDb(db: string): Promise<SchemaInfo[]> {
     const rows = await this.runQuery(
-      `SELECT SCHEMA_NAME FROM ${this.database}.INFORMATION_SCHEMA.SCHEMATA
+      `SELECT SCHEMA_NAME FROM ${db}.INFORMATION_SCHEMA.SCHEMATA
        WHERE SCHEMA_NAME NOT IN ('INFORMATION_SCHEMA')
        ORDER BY SCHEMA_NAME`,
     );
     const schemas = rows.map((r) => ({ schema: r.SCHEMA_NAME as string }));
 
     const showRows = await this.runQuery(
-      `SHOW SCHEMAS IN DATABASE ${this.database}`,
+      `SHOW SCHEMAS IN DATABASE ${db}`,
     ).catch(() => [] as Record<string, unknown>[]);
 
     const seen = new Set(schemas.map((s) => s.schema));
@@ -95,64 +109,90 @@ class SnowflakeConnector implements WarehouseConnector {
     return schemas.sort((a, b) => a.schema.localeCompare(b.schema));
   }
 
+  async listSchemas(): Promise<SchemaInfo[]> {
+    const databases = await this.discoverDatabases();
+    const allSchemas: SchemaInfo[] = [];
+    for (const db of databases) {
+      const schemas = await this.listSchemasForDb(db);
+      allSchemas.push(...schemas);
+    }
+    return allSchemas;
+  }
+
   async listTables(schema: string): Promise<TableInfo[]> {
-    const rows = await this.runQuery(
-      `SELECT TABLE_NAME, TABLE_TYPE, ROW_COUNT, COMMENT
-       FROM ${this.database}.INFORMATION_SCHEMA.TABLES
-       WHERE TABLE_SCHEMA = '${schema.replace(/'/g, "''")}'
-       ORDER BY TABLE_NAME`,
-    );
-    return rows.map((r) => ({
-      schema,
-      table: r.TABLE_NAME as string,
-      tableType: (r.TABLE_TYPE as string) || undefined,
-      rowCount: r.ROW_COUNT != null ? Number(r.ROW_COUNT) : undefined,
-      comment: (r.COMMENT as string) || undefined,
-    }));
+    const databases = await this.discoverDatabases();
+    const allTables: TableInfo[] = [];
+    for (const db of databases) {
+      const rows = await this.runQuery(
+        `SELECT TABLE_NAME, TABLE_TYPE, ROW_COUNT, COMMENT
+         FROM ${db}.INFORMATION_SCHEMA.TABLES
+         WHERE TABLE_SCHEMA = '${schema.replace(/'/g, "''")}'
+         ORDER BY TABLE_NAME`,
+      );
+      allTables.push(...rows.map((r) => ({
+        schema,
+        table: r.TABLE_NAME as string,
+        tableType: (r.TABLE_TYPE as string) || undefined,
+        rowCount: r.ROW_COUNT != null ? Number(r.ROW_COUNT) : undefined,
+        comment: (r.COMMENT as string) || undefined,
+      })));
+    }
+    return allTables;
   }
 
   async listColumns(schema: string, table: string): Promise<ColumnInfo[]> {
-    const rows = await this.runQuery(
-      `SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COMMENT
-       FROM ${this.database}.INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = '${schema.replace(/'/g, "''")}'
-       AND TABLE_NAME = '${table.replace(/'/g, "''")}'
-       ORDER BY ORDINAL_POSITION`,
-    );
+    const databases = await this.discoverDatabases();
+    const allColumns: ColumnInfo[] = [];
+    for (const db of databases) {
+      const rows = await this.runQuery(
+        `SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COMMENT
+         FROM ${db}.INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = '${schema.replace(/'/g, "''")}'
+         AND TABLE_NAME = '${table.replace(/'/g, "''")}'
+         ORDER BY ORDINAL_POSITION`,
+      );
+      if (rows.length === 0) continue;
 
-    const pkRows = await this.runQuery(
-      `SHOW PRIMARY KEYS IN ${this.database}."${schema}"."${table}"`,
-    ).catch(() => [] as Record<string, unknown>[]);
-    const pkColumns = new Set(pkRows.map((r) => (r.column_name ?? r.COLUMN_NAME) as string));
+      const pkRows = await this.runQuery(
+        `SHOW PRIMARY KEYS IN ${db}."${schema}"."${table}"`,
+      ).catch(() => [] as Record<string, unknown>[]);
+      const pkColumns = new Set(pkRows.map((r) => (r.column_name ?? r.COLUMN_NAME) as string));
 
-    return rows.map((r) => ({
-      schema,
-      table,
-      column: r.COLUMN_NAME as string,
-      dataType: r.DATA_TYPE as string,
-      nullable: r.IS_NULLABLE === "YES",
-      isPrimaryKey: pkColumns.has(r.COLUMN_NAME as string),
-      comment: (r.COMMENT as string) || undefined,
-    }));
+      allColumns.push(...rows.map((r) => ({
+        schema,
+        table,
+        column: r.COLUMN_NAME as string,
+        dataType: r.DATA_TYPE as string,
+        nullable: r.IS_NULLABLE === "YES",
+        isPrimaryKey: pkColumns.has(r.COLUMN_NAME as string),
+        comment: (r.COMMENT as string) || undefined,
+      })));
+    }
+    return allColumns;
   }
 
   async listRelationships(schema: string): Promise<RelationshipInfo[]> {
-    try {
-      const rows = await this.runQuery(
-        `SHOW IMPORTED KEYS IN SCHEMA ${this.database}."${schema}"`,
-      );
-      return rows.map((r) => ({
-        fromSchema: (r.fk_schema_name ?? r.FK_SCHEMA_NAME) as string,
-        fromTable: (r.fk_table_name ?? r.FK_TABLE_NAME) as string,
-        fromColumn: (r.fk_column_name ?? r.FK_COLUMN_NAME) as string,
-        toSchema: (r.pk_schema_name ?? r.PK_SCHEMA_NAME) as string,
-        toTable: (r.pk_table_name ?? r.PK_TABLE_NAME) as string,
-        toColumn: (r.pk_column_name ?? r.PK_COLUMN_NAME) as string,
-        constraintName: (r.fk_name ?? r.FK_NAME) as string,
-      }));
-    } catch {
-      return [];
+    const databases = await this.discoverDatabases();
+    const allRels: RelationshipInfo[] = [];
+    for (const db of databases) {
+      try {
+        const rows = await this.runQuery(
+          `SHOW IMPORTED KEYS IN SCHEMA ${db}."${schema}"`,
+        );
+        allRels.push(...rows.map((r) => ({
+          fromSchema: (r.fk_schema_name ?? r.FK_SCHEMA_NAME) as string,
+          fromTable: (r.fk_table_name ?? r.FK_TABLE_NAME) as string,
+          fromColumn: (r.fk_column_name ?? r.FK_COLUMN_NAME) as string,
+          toSchema: (r.pk_schema_name ?? r.PK_SCHEMA_NAME) as string,
+          toTable: (r.pk_table_name ?? r.PK_TABLE_NAME) as string,
+          toColumn: (r.pk_column_name ?? r.PK_COLUMN_NAME) as string,
+          constraintName: (r.fk_name ?? r.FK_NAME) as string,
+        })));
+      } catch {
+        // FK discovery not supported for this schema/db
+      }
     }
+    return allRels;
   }
 
   async close(): Promise<void> {
