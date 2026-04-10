@@ -4,24 +4,12 @@ import type { StageReporter } from "../reporter.js";
 
 const UPSERT_BATCH_SIZE = 100;
 
-export async function runUpsertToSink(
+function toRecords(
   embeddedChunks: EmbeddedChunk[],
-  sinkConnector: SinkConnector,
   warehouseConnectorId: string,
   ingestId: string,
-  namespace: string | undefined,
-  reporter: StageReporter,
-): Promise<number> {
-  const stageKey = "upsert_to_sink";
-
-  await reporter.updateStage(stageKey, {
-    status: "running",
-    startedAt: new Date(),
-    itemsTotal: embeddedChunks.length,
-  });
-  await reporter.writeLog(stageKey, "info", `Upserting ${embeddedChunks.length} vector(s) to sink`);
-
-  const records: VectorRecord[] = embeddedChunks.map((ec) => ({
+): VectorRecord[] {
+  return embeddedChunks.map((ec) => ({
     id: ec.chunk.id,
     values: ec.vector,
     metadata: {
@@ -37,20 +25,52 @@ export async function runUpsertToSink(
       content: ec.chunk.content.slice(0, 500),
     },
   }));
+}
 
-  let totalUpserted = 0;
+export class StreamingUpserter {
+  private sinkConnector: SinkConnector;
+  private warehouseConnectorId: string;
+  private ingestId: string;
+  private namespace: string | undefined;
+  private reporter: StageReporter;
+  totalUpserted = 0;
 
-  for (let i = 0; i < records.length; i += UPSERT_BATCH_SIZE) {
-    const batch = records.slice(i, i + UPSERT_BATCH_SIZE);
-    const result = await sinkConnector.upsert(batch, namespace);
-    totalUpserted += result.upsertedCount;
-
-    await reporter.updateStage(stageKey, { itemsProcessed: totalUpserted });
-    await reporter.updateRunMetrics({ vectorsUpserted: totalUpserted });
+  constructor(
+    sinkConnector: SinkConnector,
+    warehouseConnectorId: string,
+    ingestId: string,
+    namespace: string | undefined,
+    reporter: StageReporter,
+  ) {
+    this.sinkConnector = sinkConnector;
+    this.warehouseConnectorId = warehouseConnectorId;
+    this.ingestId = ingestId;
+    this.namespace = namespace;
+    this.reporter = reporter;
   }
 
-  await reporter.updateStage(stageKey, { status: "done", completedAt: new Date() });
-  await reporter.writeLog(stageKey, "info", `Upserted ${totalUpserted} vector(s)`);
+  async start(totalChunks: number): Promise<void> {
+    await this.reporter.updateStage("upsert_to_sink", {
+      status: "running",
+      startedAt: new Date(),
+      itemsTotal: totalChunks,
+    });
+    await this.reporter.writeLog("upsert_to_sink", "info", `Streaming upsert for ~${totalChunks} vector(s)`);
+  }
 
-  return totalUpserted;
+  async upsertBatch(embeddedChunks: EmbeddedChunk[]): Promise<void> {
+    const records = toRecords(embeddedChunks, this.warehouseConnectorId, this.ingestId);
+    for (let i = 0; i < records.length; i += UPSERT_BATCH_SIZE) {
+      const batch = records.slice(i, i + UPSERT_BATCH_SIZE);
+      const result = await this.sinkConnector.upsert(batch, this.namespace);
+      this.totalUpserted += result.upsertedCount;
+      await this.reporter.updateStage("upsert_to_sink", { itemsProcessed: this.totalUpserted });
+      await this.reporter.updateRunMetrics({ vectorsUpserted: this.totalUpserted });
+    }
+  }
+
+  async finish(): Promise<void> {
+    await this.reporter.updateStage("upsert_to_sink", { status: "done", completedAt: new Date() });
+    await this.reporter.writeLog("upsert_to_sink", "info", `Upserted ${this.totalUpserted} vector(s)`);
+  }
 }

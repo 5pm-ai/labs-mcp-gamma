@@ -9,13 +9,14 @@ export interface EmbeddedChunk {
 
 const EMBED_BATCH_SIZE = 512;
 
-export async function runEmbedVectors(
+export async function runEmbedAndStream(
   chunks: ChunkRecord[],
   embedder: OpenAIEmbedder,
   model: string,
   dimensions: number,
   reporter: StageReporter,
-): Promise<{ embeddedChunks: EmbeddedChunk[]; totalTokensUsed: number }> {
+  onBatch: (batch: EmbeddedChunk[]) => Promise<void>,
+): Promise<{ totalEmbedded: number; totalTokensUsed: number }> {
   const stageKey = "embed_vectors";
 
   await reporter.updateStage(stageKey, {
@@ -25,7 +26,7 @@ export async function runEmbedVectors(
   });
   await reporter.writeLog(stageKey, "info", `Embedding ${chunks.length} chunk(s) with ${model} (${dimensions}d)`);
 
-  const embeddedChunks: EmbeddedChunk[] = [];
+  let totalEmbedded = 0;
   let totalTokensUsed = 0;
 
   for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
@@ -35,26 +36,26 @@ export async function runEmbedVectors(
     const result = await embedder.embedBatch(texts, model, dimensions);
     totalTokensUsed += result.tokensUsed;
 
-    for (let j = 0; j < batch.length; j++) {
-      embeddedChunks.push({ chunk: batch[j], vector: result.vectors[j] });
-    }
+    const embedded: EmbeddedChunk[] = batch.map((chunk, j) => ({ chunk, vector: result.vectors[j] }));
+    await onBatch(embedded);
+    totalEmbedded += embedded.length;
 
     await reporter.updateStage(stageKey, { itemsProcessed: Math.min(i + EMBED_BATCH_SIZE, chunks.length) });
     await reporter.updateRunMetrics({
-      vectorsEmbedded: embeddedChunks.length,
+      vectorsEmbedded: totalEmbedded,
       totalTokensUsed,
     });
 
     if (i + EMBED_BATCH_SIZE < chunks.length) {
       await reporter.writeLog(
         stageKey, "info",
-        `Embedded ${embeddedChunks.length}/${chunks.length} chunks (${totalTokensUsed} tokens used)`,
+        `Embedded ${totalEmbedded}/${chunks.length} chunks (${totalTokensUsed} tokens used)`,
       );
     }
   }
 
   await reporter.updateStage(stageKey, { status: "done", completedAt: new Date() });
-  await reporter.writeLog(stageKey, "info", `Embedded ${embeddedChunks.length} chunk(s), ${totalTokensUsed} total tokens`);
+  await reporter.writeLog(stageKey, "info", `Embedded ${totalEmbedded} chunk(s), ${totalTokensUsed} total tokens`);
 
-  return { embeddedChunks, totalTokensUsed };
+  return { totalEmbedded, totalTokensUsed };
 }

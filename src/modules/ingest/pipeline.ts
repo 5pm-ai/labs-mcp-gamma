@@ -10,8 +10,8 @@ import { runCrawl } from "./stages/crawl.js";
 import { runExtractRelationships } from "./stages/relationships.js";
 import { runGenerateDocuments } from "./stages/documents.js";
 import { runChunkText } from "./stages/chunk.js";
-import { runEmbedVectors } from "./stages/embed.js";
-import { runUpsertToSink } from "./stages/upsert.js";
+import { runEmbedAndStream } from "./stages/embed.js";
+import { StreamingUpserter } from "./stages/upsert.js";
 
 async function withRls(pool: pg.Pool, userId: string, fn: (client: pg.PoolClient) => Promise<void>): Promise<void> {
   const client = await pool.connect();
@@ -54,13 +54,20 @@ export async function runIngestPipeline(
 
     currentStageKey = "persist_catalog";
     await reporter.updateStage("persist_catalog", { status: "running", startedAt: new Date(), itemsTotal: crawlResult.columns.length });
+    const CATALOG_BATCH = 500;
     await withRls(pool, config.userId, async (client) => {
       await client.query("DELETE FROM connector_columns WHERE connector_id = $1", [config.warehouseConnectorId]);
-      for (const col of crawlResult.columns) {
+      for (let i = 0; i < crawlResult.columns.length; i += CATALOG_BATCH) {
+        const batch = crawlResult.columns.slice(i, i + CATALOG_BATCH);
+        const values: unknown[] = [];
+        const placeholders = batch.map((col, j) => {
+          const off = j * 8;
+          values.push(config.warehouseConnectorId, col.schema, col.table, col.column, col.dataType, col.isPrimaryKey, col.nullable, col.comment ?? null);
+          return `($${off+1}, $${off+2}, $${off+3}, $${off+4}, $${off+5}, $${off+6}, $${off+7}, $${off+8})`;
+        });
         await client.query(
-          `INSERT INTO connector_columns (connector_id, schema_name, table_name, column_name, data_type, is_primary_key, is_nullable, comment)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [config.warehouseConnectorId, col.schema, col.table, col.column, col.dataType, col.isPrimaryKey, col.nullable, col.comment ?? null],
+          `INSERT INTO connector_columns (connector_id, schema_name, table_name, column_name, data_type, is_primary_key, is_nullable, comment) VALUES ${placeholders.join(", ")}`,
+          values,
         );
       }
     });
@@ -82,16 +89,22 @@ export async function runIngestPipeline(
 
     currentStageKey = "embed_vectors";
     const embedder = new OpenAIEmbedder(openaiApiKey);
-    const { embeddedChunks } = await runEmbedVectors(
+    const upserter = new StreamingUpserter(
+      sinkConnector, config.warehouseConnectorId, config.ingestId, sinkNamespace, reporter,
+    );
+    await upserter.start(chunks.length);
+
+    await runEmbedAndStream(
       chunks, embedder, config.embeddingModel, config.embeddingDimensions, reporter,
+      async (batch) => {
+        currentStageKey = "upsert_to_sink";
+        await upserter.upsertBatch(batch);
+        currentStageKey = "embed_vectors";
+      },
     );
 
     currentStageKey = "upsert_to_sink";
-    await runUpsertToSink(
-      embeddedChunks, sinkConnector,
-      config.warehouseConnectorId, config.ingestId,
-      sinkNamespace, reporter,
-    );
+    await upserter.finish();
 
     await reporter.completeRun("completed");
     await reporter.writeLog(null, "info", "Ingest pipeline completed successfully");
