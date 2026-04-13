@@ -6,13 +6,14 @@
 # and redeploys affected Cloud Run services/jobs.
 #
 # Usage:
-#   ./scripts/rotate-secrets.sh [--dry-run] [--validate] [--skip-deploy]
+#   ./scripts/rotate-secrets.sh [--target gamma|prod|all] [--dry-run] [--validate]
+#                               [--skip-deploy] [--check-build-args]
 #
 # Prerequisites:
-#   1. gcloud authenticated (roles/owner on ai-5pm-labs)
+#   1. gcloud authenticated (roles/owner on target project)
 #   2. Upstream rotation done (Auth0/Stripe/Postmark/OpenAI dashboards)
 #   3. For DB passwords: ALTER ROLE via bastion BEFORE running this
-#   4. .env files updated with new PRODUCTION values
+#   4. .env files updated with new PRODUCTION values for the target
 #
 # See scripts/ROTATE_SECRETS.md for the full runbook.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -21,8 +22,6 @@ set -euo pipefail
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 REGION="us-east4"
-PROJECT="ai-5pm-labs"
-REGISTRY="us-east4-docker.pkg.dev/${PROJECT}/gamma-docker"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MCP_REPO="${MCP_REPO:-$(cd "$SCRIPT_DIR/.." && pwd)}"
@@ -38,6 +37,58 @@ fi
 
 MCP_ENV="${MCP_REPO}/.env"
 CTRL_ENV="${CTRL_REPO:+${CTRL_REPO}/.env}"
+
+# ─── Target Configurations ────────────────────────────────────────────────────
+
+gamma_project()  { echo "ai-5pm-labs"; }
+gamma_registry() { echo "us-east4-docker.pkg.dev/ai-5pm-labs/gamma-docker"; }
+gamma_url()      { echo "https://gamma.5pm.ai"; }
+
+gamma_secrets() {
+  cat <<'GAMMA_EOF'
+auth0-client-secret|mcp|AUTH0_CLIENT_SECRET|gamma-mcp
+database-url|mcp|DATABASE_URL|gamma-mcp
+openai-api-key|mcp|OPENAI_API_KEY|gamma-mcp,gamma-ctrl-api,gamma-ingest-worker:job
+ingest-database-url|mcp|INGEST_DATABASE_URL|gamma-ingest-worker:job
+ctrl-database-url|ctrl|DATABASE_URL|gamma-ctrl-api
+database-admin-url|ctrl|DATABASE_ADMIN_URL|db-migrate:job
+stripe-secret-key|ctrl|STRIPE_SECRET_KEY|gamma-ctrl-api
+stripe-webhook-secret|ctrl|STRIPE_WEBHOOK_SECRET|gamma-ctrl-api
+postmark-server-token|ctrl|POSTMARK_SERVER_TOKEN|gamma-ctrl-api
+GAMMA_EOF
+}
+
+gamma_build_args() {
+  cat <<'GAMMA_BA_EOF'
+VITE_AUTH0_CLIENT_ID|nEejna8VWdHg3GR56DK9pbG6lj828yYg
+VITE_AUTH0_AUDIENCE|api.gamma.5pm.ai
+GAMMA_BA_EOF
+}
+
+prod_project()  { echo "ai-5pm-mcp"; }
+prod_registry() { echo "us-east4-docker.pkg.dev/ai-5pm-mcp/prod-docker"; }
+prod_url()      { echo "https://mcp.5pm.ai"; }
+
+prod_secrets() {
+  cat <<'PROD_EOF'
+auth0-client-secret|mcp|AUTH0_CLIENT_SECRET|prod-mcp
+database-url|mcp|DATABASE_URL|prod-mcp
+openai-api-key|mcp|OPENAI_API_KEY|prod-mcp,prod-ctrl-api,prod-ingest-worker:job
+ingest-database-url|mcp|INGEST_DATABASE_URL|prod-ingest-worker:job
+ctrl-database-url|ctrl|DATABASE_URL|prod-ctrl-api
+database-admin-url|ctrl|DATABASE_ADMIN_URL|db-migrate:job
+stripe-secret-key|ctrl|STRIPE_SECRET_KEY|prod-ctrl-api
+stripe-webhook-secret|ctrl|STRIPE_WEBHOOK_SECRET|prod-ctrl-api
+postmark-server-token|ctrl|POSTMARK_SERVER_TOKEN|prod-ctrl-api
+PROD_EOF
+}
+
+prod_build_args() {
+  cat <<'PROD_BA_EOF'
+VITE_AUTH0_CLIENT_ID|nsflJdrV8RsRoc6qarMWjl934jZkZkt0
+VITE_AUTH0_AUDIENCE|api.mcp.5pm.ai
+PROD_BA_EOF
+}
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -70,11 +121,11 @@ get_env_value() {
 
 get_secret_latest() {
   gcloud secrets versions access latest \
-    --secret="$1" --project="$PROJECT" 2>/dev/null || return 1
+    --secret="$1" --project="$CUR_PROJECT" 2>/dev/null || return 1
 }
 
 secret_exists() {
-  gcloud secrets describe "$1" --project="$PROJECT" &>/dev/null
+  gcloud secrets describe "$1" --project="$CUR_PROJECT" &>/dev/null
 }
 
 looks_local() {
@@ -91,25 +142,6 @@ is_db_secret() {
   esac
 }
 
-# ─── Secret Mapping (verified against live Cloud Run service configs) ─────────
-# Format: SECRET_NAME|SOURCE_REPO|ENV_VAR|AFFECTED_SERVICES
-#   SOURCE_REPO: mcp or ctrl (which .env is the canonical source)
-#   AFFECTED_SERVICES: comma-separated; :job suffix for Cloud Run Jobs
-#
-# Excluded: redis-tls-ca (Memorystore-managed cert, not sourced from .env)
-
-SECRETS=(
-  "auth0-client-secret|mcp|AUTH0_CLIENT_SECRET|gamma-mcp"
-  "database-url|mcp|DATABASE_URL|gamma-mcp"
-  "openai-api-key|mcp|OPENAI_API_KEY|gamma-mcp,gamma-ctrl-api,gamma-ingest-worker:job"
-  "ingest-database-url|mcp|INGEST_DATABASE_URL|gamma-ingest-worker:job"
-  "ctrl-database-url|ctrl|DATABASE_URL|gamma-ctrl-api"
-  "database-admin-url|ctrl|DATABASE_ADMIN_URL|db-migrate:job"
-  "stripe-secret-key|ctrl|STRIPE_SECRET_KEY|gamma-ctrl-api"
-  "stripe-webhook-secret|ctrl|STRIPE_WEBHOOK_SECRET|gamma-ctrl-api"
-  "postmark-server-token|ctrl|POSTMARK_SERVER_TOKEN|gamma-ctrl-api"
-)
-
 CROSS_VALIDATE_VARS=("OPENAI_API_KEY" "INGEST_DATABASE_URL")
 
 # ─── Flags ────────────────────────────────────────────────────────────────────
@@ -117,12 +149,18 @@ CROSS_VALIDATE_VARS=("OPENAI_API_KEY" "INGEST_DATABASE_URL")
 DRY_RUN=false
 VALIDATE_ONLY=false
 SKIP_DEPLOY=false
+CHECK_BUILD_ARGS=false
+TARGET="gamma"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --dry-run)      DRY_RUN=true; shift ;;
-    --validate)     VALIDATE_ONLY=true; shift ;;
-    --skip-deploy)  SKIP_DEPLOY=true; shift ;;
+    --target)
+      [[ -n "${2:-}" ]] || die "--target requires gamma|prod|all"
+      TARGET="$2"; shift 2 ;;
+    --dry-run)           DRY_RUN=true; shift ;;
+    --validate)          VALIDATE_ONLY=true; shift ;;
+    --skip-deploy)       SKIP_DEPLOY=true; shift ;;
+    --check-build-args)  CHECK_BUILD_ARGS=true; shift ;;
     -h|--help)
       awk '/^# ─────/{if(n++)exit}n{sub(/^# ?/,"");print}' "${BASH_SOURCE[0]}"
       exit 0
@@ -130,6 +168,11 @@ while [[ $# -gt 0 ]]; do
     *) die "Unknown flag: $1" ;;
   esac
 done
+
+case "$TARGET" in
+  gamma|prod|all) ;;
+  *) die "Invalid target: $TARGET (must be gamma|prod|all)" ;;
+esac
 
 # ─── Validate ─────────────────────────────────────────────────────────────────
 
@@ -146,14 +189,14 @@ validate() {
     warn "Set CTRL_REPO to include them."
   fi
 
-  gcloud auth print-access-token --project="$PROJECT" &>/dev/null \
-    || { warn "gcloud not authenticated for project $PROJECT"; ((errors++)); }
+  gcloud auth print-access-token --project="$CUR_PROJECT" &>/dev/null \
+    || { warn "gcloud not authenticated for project $CUR_PROJECT"; ((errors++)); }
 
-  for entry in "${SECRETS[@]}"; do
+  for entry in "${CUR_SECRETS[@]}"; do
     IFS='|' read -r secret_name repo env_var _svc <<< "$entry"
     [[ "$repo" == "ctrl" && -z "${CTRL_ENV:-}" ]] && continue
     secret_exists "$secret_name" \
-      || { warn "Secret not in Secret Manager: $secret_name"; ((errors++)); }
+      || { warn "Secret not in Secret Manager ($CUR_PROJECT): $secret_name"; ((errors++)); }
     local file
     file=$(env_file_for "$repo")
     grep -qE "^${env_var}=" "$file" 2>/dev/null \
@@ -161,7 +204,7 @@ validate() {
   done
 
   (( errors == 0 )) || die "Validation failed with ${errors} error(s)."
-  ok "Configuration valid"
+  ok "Configuration valid ($CUR_TARGET)"
 }
 
 # ─── Cross-repo consistency check ────────────────────────────────────────────
@@ -178,28 +221,80 @@ cross_validate() {
   done
 }
 
-# ─── Main ─────────────────────────────────────────────────────────────────────
+# ─── Build-time arg validation ────────────────────────────────────────────────
 
-main() {
-  log "rotate-secrets — idempotent secret rotation"
+check_build_args() {
+  log "Checking build-time args for $CUR_TARGET ($CUR_URL)..."
+  local errors=0
+
+  local index_js
+  index_js=$(curl -sL "$CUR_URL/" 2>/dev/null \
+    | grep -oE 'src="[^"]*\.js"' | head -1 | sed 's/src="//;s/"//') || true
+
+  if [[ -z "$index_js" ]]; then
+    warn "Could not fetch SPA index from $CUR_URL — skipping build-arg check."
+    return 0
+  fi
+
+  local bundle_url="${CUR_URL}${index_js}"
+
+  while IFS='|' read -r arg_name expected_val; do
+    [[ -z "$arg_name" ]] && continue
+    if [[ $(curl -sL "$bundle_url" 2>/dev/null | grep -coF "$expected_val") -gt 0 ]]; then
+      ok "  $arg_name: $expected_val (found)"
+    else
+      warn "  $arg_name: expected '$expected_val' — NOT FOUND in SPA bundle!"
+      warn "  The SPA image may need rebuilding with --build-arg $arg_name"
+      ((errors++))
+    fi
+  done < <("${CUR_TARGET}_build_args")
+
+  if (( errors > 0 )); then
+    warn "$errors build-time arg mismatch(es) detected for $CUR_TARGET."
+    warn "Rebuild the ctrl-plane image with correct --build-arg values."
+  else
+    ok "All build-time args correct ($CUR_TARGET)"
+  fi
+  return $errors
+}
+
+# ─── Run rotation for a single target ─────────────────────────────────────────
+
+run_target() {
+  CUR_TARGET="$1"
+  CUR_PROJECT=$("${CUR_TARGET}_project")
+  CUR_REGISTRY=$("${CUR_TARGET}_registry")
+  CUR_URL=$("${CUR_TARGET}_url")
+
+  CUR_SECRETS=()
+  while IFS= read -r _line; do
+    [[ -n "$_line" ]] && CUR_SECRETS+=("$_line")
+  done < <("${CUR_TARGET}_secrets")
+
+  log "═══ Target: $CUR_TARGET (project: $CUR_PROJECT) ═══"
   log ""
 
+  if $CHECK_BUILD_ARGS; then
+    check_build_args || true
+    log ""
+  fi
+
   validate
-  if $VALIDATE_ONLY; then exit 0; fi
+  if $VALIDATE_ONLY; then return 0; fi
 
   cross_validate
 
   # ── Phase 1: Compare ────────────────────────────────────────────────────
 
   log ""
-  log "Comparing .env values with Secret Manager..."
+  log "Comparing .env values with Secret Manager ($CUR_PROJECT)..."
 
   changed=()
   affected_svcs=()
   db_changed=()
   refused=()
 
-  for entry in "${SECRETS[@]}"; do
+  for entry in "${CUR_SECRETS[@]}"; do
     IFS='|' read -r secret_name repo env_var services <<< "$entry"
     [[ "$repo" == "ctrl" && -z "${CTRL_ENV:-}" ]] && continue
 
@@ -208,7 +303,7 @@ main() {
     new_val=$(get_env_value "$file" "$env_var") \
       || die "Cannot read $env_var from $file"
     current_val=$(get_secret_latest "$secret_name") \
-      || die "Cannot read secret: $secret_name"
+      || die "Cannot read secret: $secret_name ($CUR_PROJECT)"
 
     if [[ "$new_val" == "$current_val" ]]; then
       log "  ─ $secret_name (unchanged)"
@@ -240,11 +335,11 @@ main() {
   fi
 
   if (( ${#changed[@]} == 0 )); then
-    ok "No changes to push. All production secrets match."
-    exit 0
+    ok "No changes to push ($CUR_TARGET). All secrets match."
+    return 0
   fi
 
-  log "Summary: ${#changed[@]} secret(s) to push"
+  log "Summary: ${#changed[@]} secret(s) to push ($CUR_TARGET)"
   for entry in "${changed[@]}"; do
     IFS='|' read -r sn _ _ _ <<< "$entry"
     log "  • $sn"
@@ -270,18 +365,18 @@ main() {
 
   if $DRY_RUN; then
     log ""
-    log "[DRY-RUN] No changes made."
-    exit 0
+    log "[DRY-RUN] No changes made ($CUR_TARGET)."
+    return 0
   fi
 
   log ""
-  read -r -p "[rotate] Proceed? [y/N] " confirm
+  read -r -p "[rotate] Proceed with $CUR_TARGET? [y/N] " confirm
   [[ "$confirm" =~ ^[Yy]$ ]] || die "Aborted."
 
   # ── Phase 2: Push secrets ───────────────────────────────────────────────
 
   log ""
-  log "Pushing ${#changed[@]} secret(s) to Secret Manager..."
+  log "Pushing ${#changed[@]} secret(s) to Secret Manager ($CUR_PROJECT)..."
 
   pushed=()
   for entry in "${changed[@]}"; do
@@ -298,7 +393,7 @@ main() {
     new_val=$(get_env_value "$file" "$env_var")
 
     printf '%s' "$new_val" | gcloud secrets versions add "$secret_name" \
-      --project="$PROJECT" --data-file=- --quiet >/dev/null
+      --project="$CUR_PROJECT" --data-file=- --quiet >/dev/null
     ok "Pushed: $secret_name"
     pushed+=("$secret_name")
   done
@@ -307,10 +402,10 @@ main() {
 
   if $SKIP_DEPLOY; then
     log ""
-    warn "--skip-deploy set. Remember to deploy manually."
+    warn "--skip-deploy set. Remember to deploy $CUR_TARGET manually."
   elif (( ${#unique_svcs[@]} > 0 )); then
     log ""
-    log "Redeploying ${#unique_svcs[@]} service(s)/job(s)..."
+    log "Redeploying ${#unique_svcs[@]} service(s)/job(s) ($CUR_TARGET)..."
 
     local ts
     ts=$(date +%s)
@@ -322,11 +417,11 @@ main() {
 
       if [[ "$svc_type" == "job" ]]; then
         gcloud run jobs update "$svc_name" \
-          --region="$REGION" --project="$PROJECT" \
+          --region="$REGION" --project="$CUR_PROJECT" \
           --update-env-vars="_ROTATE_TS=$ts" --quiet >/dev/null
       else
         gcloud run services update "$svc_name" \
-          --region="$REGION" --project="$PROJECT" \
+          --region="$REGION" --project="$CUR_PROJECT" \
           --update-env-vars="_ROTATE_TS=$ts" --quiet >/dev/null
       fi
       ok "Redeployed: $svc_name ($svc_type)"
@@ -336,12 +431,35 @@ main() {
   # ── Done ────────────────────────────────────────────────────────────────
 
   log ""
-  ok "Rotation complete. ${#pushed[@]} secret(s) pushed, ${#unique_svcs[@]} target(s) redeployed."
+  ok "Rotation complete ($CUR_TARGET). ${#pushed[@]} secret(s) pushed, ${#unique_svcs[@]} target(s) redeployed."
+}
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+main() {
+  log "rotate-secrets — idempotent secret rotation"
   log ""
+
+  local targets=()
+  if [[ "$TARGET" == "all" ]]; then
+    targets=(gamma prod)
+  else
+    targets=("$TARGET")
+  fi
+
+  for t in "${targets[@]}"; do
+    run_target "$t"
+    log ""
+  done
+
   log "Post-rotation checklist:"
-  log "  1. Verify health: curl -sI https://gamma.5pm.ai/health"
-  log "  2. Restore local dev values in .env if you changed DB URLs"
-  log "  3. Test an MCP connection (Cursor / Inspector)"
+  for t in "${targets[@]}"; do
+    local url
+    url=$("${t}_url")
+    log "  • Verify health: curl -sI ${url}/health"
+  done
+  log "  • Restore local dev values in .env if you changed DB URLs"
+  log "  • Test an MCP connection (Cursor / Inspector)"
 }
 
 main
