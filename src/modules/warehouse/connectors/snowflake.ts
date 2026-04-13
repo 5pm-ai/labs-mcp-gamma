@@ -91,7 +91,7 @@ class SnowflakeConnector implements WarehouseConnector {
        WHERE SCHEMA_NAME NOT IN ('INFORMATION_SCHEMA')
        ORDER BY SCHEMA_NAME`,
     );
-    const schemas = rows.map((r) => ({ schema: r.SCHEMA_NAME as string }));
+    const schemas = rows.map((r) => ({ database: db, schema: r.SCHEMA_NAME as string }));
 
     const showRows = await this.runQuery(
       `SHOW SCHEMAS IN DATABASE ${db}`,
@@ -101,7 +101,7 @@ class SnowflakeConnector implements WarehouseConnector {
     for (const r of showRows) {
       const name = (r.name ?? r.NAME) as string;
       if (name && name !== "INFORMATION_SCHEMA" && !seen.has(name)) {
-        schemas.push({ schema: name });
+        schemas.push({ database: db, schema: name });
         seen.add(name);
       }
     }
@@ -119,8 +119,8 @@ class SnowflakeConnector implements WarehouseConnector {
     return allSchemas;
   }
 
-  async listTables(schema: string): Promise<TableInfo[]> {
-    const databases = await this.discoverDatabases();
+  async listTables(schema: string, database?: string): Promise<TableInfo[]> {
+    const databases = database ? [database] : await this.discoverDatabases();
     const allTables: TableInfo[] = [];
     for (const db of databases) {
       const rows = await this.runQuery(
@@ -130,6 +130,7 @@ class SnowflakeConnector implements WarehouseConnector {
          ORDER BY TABLE_NAME`,
       );
       allTables.push(...rows.map((r) => ({
+        database: db,
         schema,
         table: r.TABLE_NAME as string,
         tableType: (r.TABLE_TYPE as string) || undefined,
@@ -140,8 +141,8 @@ class SnowflakeConnector implements WarehouseConnector {
     return allTables;
   }
 
-  async listColumns(schema: string, table: string): Promise<ColumnInfo[]> {
-    const databases = await this.discoverDatabases();
+  async listColumns(schema: string, table: string, database?: string): Promise<ColumnInfo[]> {
+    const databases = database ? [database] : await this.discoverDatabases();
     const allColumns: ColumnInfo[] = [];
     for (const db of databases) {
       const rows = await this.runQuery(
@@ -159,6 +160,7 @@ class SnowflakeConnector implements WarehouseConnector {
       const pkColumns = new Set(pkRows.map((r) => (r.column_name ?? r.COLUMN_NAME) as string));
 
       allColumns.push(...rows.map((r) => ({
+        database: db,
         schema,
         table,
         column: r.COLUMN_NAME as string,
@@ -171,8 +173,8 @@ class SnowflakeConnector implements WarehouseConnector {
     return allColumns;
   }
 
-  async listRelationships(schema: string): Promise<RelationshipInfo[]> {
-    const databases = await this.discoverDatabases();
+  async listRelationships(schema: string, database?: string): Promise<RelationshipInfo[]> {
+    const databases = database ? [database] : await this.discoverDatabases();
     const allRels: RelationshipInfo[] = [];
     for (const db of databases) {
       try {
@@ -180,9 +182,11 @@ class SnowflakeConnector implements WarehouseConnector {
           `SHOW IMPORTED KEYS IN SCHEMA ${db}."${schema}"`,
         );
         allRels.push(...rows.map((r) => ({
+          fromDatabase: db,
           fromSchema: (r.fk_schema_name ?? r.FK_SCHEMA_NAME) as string,
           fromTable: (r.fk_table_name ?? r.FK_TABLE_NAME) as string,
           fromColumn: (r.fk_column_name ?? r.FK_COLUMN_NAME) as string,
+          toDatabase: db,
           toSchema: (r.pk_schema_name ?? r.PK_SCHEMA_NAME) as string,
           toTable: (r.pk_table_name ?? r.PK_TABLE_NAME) as string,
           toColumn: (r.pk_column_name ?? r.PK_COLUMN_NAME) as string,

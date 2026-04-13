@@ -7,10 +7,18 @@ export interface UserScope {
   sinkConnectorIds: string[];
   columns: Array<{
     connectorId: string;
+    databaseName?: string;
     schemaName: string;
     tableName: string;
     columnName: string;
   }>;
+}
+
+function scopeTableKey(database: string, schema: string, table: string): string {
+  const db = database.toLowerCase();
+  const s = schema.toLowerCase();
+  const t = table.toLowerCase();
+  return db ? `${db}.${s}.${t}` : `${s}.${t}`;
 }
 
 export async function resolveUserScope(userId: string): Promise<UserScope | null> {
@@ -56,9 +64,9 @@ export async function resolveUserScope(userId: string): Promise<UserScope | null
     }
 
     const cols = await client.query<{
-      connector_id: string; schema_name: string; table_name: string; column_name: string;
+      connector_id: string; database_name: string; schema_name: string; table_name: string; column_name: string;
     }>(
-      "SELECT connector_id, schema_name, table_name, column_name FROM scope_columns WHERE scope_id = $1",
+      "SELECT connector_id, COALESCE(database_name, '') AS database_name, schema_name, table_name, column_name FROM scope_columns WHERE scope_id = $1",
       [scopeId],
     );
 
@@ -69,6 +77,7 @@ export async function resolveUserScope(userId: string): Promise<UserScope | null
       sinkConnectorIds: [...sinkIds],
       columns: cols.rows.map((r) => ({
         connectorId: r.connector_id,
+        databaseName: r.database_name || undefined,
         schemaName: r.schema_name,
         tableName: r.table_name,
         columnName: r.column_name,
@@ -97,7 +106,7 @@ export function sanitizeSinkResults(
   const allowedTables = new Set<string>();
   const allowedColsByTable = new Map<string, Set<string>>();
   for (const col of scope.columns) {
-    const key = `${col.schemaName}.${col.tableName}`.toLowerCase();
+    const key = scopeTableKey(col.databaseName ?? "", col.schemaName, col.tableName);
     allowedTables.add(key);
     if (!allowedColsByTable.has(key)) allowedColsByTable.set(key, new Set());
     allowedColsByTable.get(key)!.add(col.columnName.toLowerCase());
@@ -106,14 +115,19 @@ export function sanitizeSinkResults(
   return matches
     .filter((m) => {
       if (!m.metadata) return false;
+      const database = String(m.metadata.database ?? "").toLowerCase();
       const schema = String(m.metadata.schema ?? "").toLowerCase();
       const table = String(m.metadata.table ?? "").toLowerCase();
       if (!schema || !table) return false;
-      return allowedTables.has(`${schema}.${table}`);
+      const key = database ? `${database}.${schema}.${table}` : `${schema}.${table}`;
+      return allowedTables.has(key);
     })
     .map((m) => {
       if (!m.metadata) return m;
-      const key = `${String(m.metadata.schema ?? "")}.${String(m.metadata.table ?? "")}`.toLowerCase();
+      const database = String(m.metadata.database ?? "").toLowerCase();
+      const schema = String(m.metadata.schema ?? "").toLowerCase();
+      const table = String(m.metadata.table ?? "").toLowerCase();
+      const key = database ? `${database}.${schema}.${table}` : `${schema}.${table}`;
       const allowedCols = allowedColsByTable.get(key);
       if (!allowedCols || !Array.isArray(m.metadata.columns)) return m;
       const sanitized = { ...m.metadata };
@@ -134,7 +148,7 @@ export function getConnectorColumnsLookup(scope: UserScope, connectorId: string)
   const tableColumns = new Map<string, Set<string>>();
   for (const col of scope.columns) {
     if (col.connectorId === connectorId) {
-      const key = `${col.schemaName}.${col.tableName}`;
+      const key = scopeTableKey(col.databaseName ?? "", col.schemaName, col.tableName);
       if (!tableColumns.has(key)) tableColumns.set(key, new Set());
       tableColumns.get(key)!.add(col.columnName);
     }

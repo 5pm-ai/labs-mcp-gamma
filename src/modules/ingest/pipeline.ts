@@ -61,12 +61,12 @@ export async function runIngestPipeline(
         const batch = crawlResult.columns.slice(i, i + CATALOG_BATCH);
         const values: unknown[] = [];
         const placeholders = batch.map((col, j) => {
-          const off = j * 8;
-          values.push(config.warehouseConnectorId, col.schema, col.table, col.column, col.dataType, col.isPrimaryKey, col.nullable, col.comment ?? null);
-          return `($${off+1}, $${off+2}, $${off+3}, $${off+4}, $${off+5}, $${off+6}, $${off+7}, $${off+8})`;
+          const off = j * 9;
+          values.push(config.warehouseConnectorId, col.database ?? "", col.schema, col.table, col.column, col.dataType, col.isPrimaryKey, col.nullable, col.comment ?? null);
+          return `($${off+1}, $${off+2}, $${off+3}, $${off+4}, $${off+5}, $${off+6}, $${off+7}, $${off+8}, $${off+9})`;
         });
         await client.query(
-          `INSERT INTO connector_columns (connector_id, schema_name, table_name, column_name, data_type, is_primary_key, is_nullable, comment) VALUES ${placeholders.join(", ")}`,
+          `INSERT INTO connector_columns (connector_id, database_name, schema_name, table_name, column_name, data_type, is_primary_key, is_nullable, comment) VALUES ${placeholders.join(", ")}`,
           values,
         );
       }

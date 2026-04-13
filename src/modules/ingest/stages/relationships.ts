@@ -19,15 +19,16 @@ export async function runExtractRelationships(
 
   for (let i = 0; i < schemas.length; i++) {
     const schema = schemas[i];
+    const schemaLabel = schema.database ? `${schema.database}.${schema.schema}` : schema.schema;
     try {
-      const rels = await connector.listRelationships(schema.schema);
+      const rels = await connector.listRelationships(schema.schema, schema.database);
       allRelationships.push(...rels);
       if (rels.length > 0) {
-        await reporter.writeLog(stageKey, "info", `  ${rels.length} relationship(s) in ${schema.schema}`);
+        await reporter.writeLog(stageKey, "info", `  ${rels.length} relationship(s) in ${schemaLabel}`);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      await reporter.writeLog(stageKey, "warn", `  Relationship extraction skipped for ${schema.schema}: ${msg}`);
+      await reporter.writeLog(stageKey, "warn", `  Relationship extraction skipped for ${schemaLabel}: ${msg}`);
     }
     await reporter.updateStage(stageKey, { itemsProcessed: i + 1 });
   }

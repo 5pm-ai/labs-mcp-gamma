@@ -231,3 +231,13 @@
 - Run `./scripts/rotate-secrets.sh --target all --check-build-args --validate` after any SPA deployment.
 
 **Refs:** `scripts/rotate-secrets.sh`, `scripts/ROTATE_SECRETS.md`
+
+---
+
+### [2026-04-13] Multi-database namespace collision in persist_catalog
+**Context:** Running production ingest on a Snowflake connector whose role had access to multiple databases.
+**Symptoms:** `persist_catalog` stage threw `duplicate key value violates unique constraint "connector_columns_connector_id_schema_name_table_name_colum_key"`. Schemas like ANALYTICS, PUBLIC, MARKETING existed across multiple databases, producing identical (connector_id, schema_name, table_name, column_name) tuples.
+**Root Cause:** The entire data pipeline — `SchemaInfo`/`ColumnInfo` types, `connector_columns` table, `scope_columns` table, SQL validator catalog keys, scope resolution, and sink vector metadata — used a 2-level namespace (schema.table) while Snowflake has a 3-level namespace (database.schema.table). When `discoverDatabases()` returned multiple databases, the flat schema list produced collisions.
+**Resolution:** Added `database_name TEXT NOT NULL DEFAULT ''` to both `connector_columns` and `scope_columns` tables. Updated unique constraints to include `database_name`. Propagated `database` field through all warehouse types (`SchemaInfo`, `TableInfo`, `ColumnInfo`, `RelationshipInfo`), Snowflake connector methods, ingest pipeline (crawl, persist_catalog, documents, chunk, upsert), SQL validator (catalog keys, `extractTableRefs`, `resolveTableKey`, `buildScopeTableMap`), scope service (`UserScope`, `sanitizeSinkResults`), and saas-ctrl scope API/Zod schemas. BigQuery and ClickHouse connectors unaffected (single-database, empty `database_name`).
+**Prevention:** Any future warehouse connector type that supports multi-database must propagate the `database` field. The `extractTableRefs` function handles both 2-part and 3-part SQL references via parser AST field detection (db vs schema).
+**Refs:** persist_catalog fix, sql-validator update, saas-ctrl DDL migration

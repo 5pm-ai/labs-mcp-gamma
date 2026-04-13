@@ -11,7 +11,8 @@ function buildTableDocument(
   const lines: string[] = [];
 
   const typeLabel = table.tableType ? `${table.tableType}` : "Table";
-  lines.push(`${typeLabel}: ${table.schema}.${table.table}`);
+  const qualifiedName = table.database ? `${table.database}.${table.schema}.${table.table}` : `${table.schema}.${table.table}`;
+  lines.push(`${typeLabel}: ${qualifiedName}`);
   if (table.comment) lines.push(`Description: ${table.comment}`);
   if (table.rowCount != null) lines.push(`Approximate rows: ${table.rowCount.toLocaleString()}`);
   lines.push("");
@@ -62,7 +63,7 @@ export async function runGenerateDocuments(
 
   const columnsByTable = new Map<string, ColumnInfo[]>();
   for (const col of columns) {
-    const key = `${col.schema}.${col.table}`;
+    const key = col.database ? `${col.database}.${col.schema}.${col.table}` : `${col.schema}.${col.table}`;
     const list = columnsByTable.get(key) || [];
     list.push(col);
     columnsByTable.set(key, list);
@@ -72,20 +73,22 @@ export async function runGenerateDocuments(
 
   for (let i = 0; i < tables.length; i++) {
     const table = tables[i];
-    const key = `${table.schema}.${table.table}`;
+    const key = table.database ? `${table.database}.${table.schema}.${table.table}` : `${table.schema}.${table.table}`;
     const tableCols = columnsByTable.get(key) || [];
 
     const outbound = relationships.filter(
-      (r) => r.fromSchema === table.schema && r.fromTable === table.table,
+      (r) => r.fromSchema === table.schema && r.fromTable === table.table && (r.fromDatabase ?? "") === (table.database ?? ""),
     );
     const inbound = relationships.filter(
-      (r) => r.toSchema === table.schema && r.toTable === table.table,
+      (r) => r.toSchema === table.schema && r.toTable === table.table && (r.toDatabase ?? "") === (table.database ?? ""),
     );
 
     const content = buildTableDocument(table, tableCols, inbound, outbound);
+    const docIdPrefix = table.database ? `doc_${table.database}_${table.schema}_${table.table}` : `doc_${table.schema}_${table.table}`;
 
     documents.push({
-      id: `doc_${table.schema}_${table.table}`,
+      id: docIdPrefix,
+      database: table.database,
       schema: table.schema,
       table: table.table,
       content,

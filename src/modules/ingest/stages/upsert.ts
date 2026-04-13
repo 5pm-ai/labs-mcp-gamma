@@ -15,6 +15,7 @@ function toRecords(
     metadata: {
       warehouseConnectorId,
       ingestId,
+      database: ec.chunk.database ?? "",
       schema: ec.chunk.schema,
       table: ec.chunk.table,
       columns: ec.chunk.columns,

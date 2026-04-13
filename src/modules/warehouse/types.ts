@@ -8,10 +8,12 @@ export interface WarehouseResult {
 }
 
 export interface SchemaInfo {
+  database?: string;
   schema: string;
 }
 
 export interface TableInfo {
+  database?: string;
   schema: string;
   table: string;
   tableType?: string;
@@ -20,6 +22,7 @@ export interface TableInfo {
 }
 
 export interface ColumnInfo {
+  database?: string;
   schema: string;
   table: string;
   column: string;
@@ -30,9 +33,11 @@ export interface ColumnInfo {
 }
 
 export interface RelationshipInfo {
+  fromDatabase?: string;
   fromSchema: string;
   fromTable: string;
   fromColumn: string;
+  toDatabase?: string;
   toSchema: string;
   toTable: string;
   toColumn: string;
@@ -42,9 +47,9 @@ export interface RelationshipInfo {
 export interface WarehouseConnector {
   execute(sql: string): Promise<WarehouseResult>;
   listSchemas(): Promise<SchemaInfo[]>;
-  listTables(schema: string): Promise<TableInfo[]>;
-  listColumns(schema: string, table: string): Promise<ColumnInfo[]>;
-  listRelationships(schema: string): Promise<RelationshipInfo[]>;
+  listTables(schema: string, database?: string): Promise<TableInfo[]>;
+  listColumns(schema: string, table: string, database?: string): Promise<ColumnInfo[]>;
+  listRelationships(schema: string, database?: string): Promise<RelationshipInfo[]>;
   close(): Promise<void>;
 }
 

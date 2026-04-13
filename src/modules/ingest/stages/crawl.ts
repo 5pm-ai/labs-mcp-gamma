@@ -26,14 +26,15 @@ export async function runCrawl(
 
   for (let i = 0; i < schemas.length; i++) {
     const schema = schemas[i];
-    await reporter.writeLog(stageKey, "info", `Crawling schema: ${schema.schema}`);
+    const schemaLabel = schema.database ? `${schema.database}.${schema.schema}` : schema.schema;
+    await reporter.writeLog(stageKey, "info", `Crawling schema: ${schemaLabel}`);
 
-    const tables = await connector.listTables(schema.schema);
+    const tables = await connector.listTables(schema.schema, schema.database);
     allTables.push(...tables);
-    await reporter.writeLog(stageKey, "info", `  ${tables.length} table(s) in ${schema.schema}`);
+    await reporter.writeLog(stageKey, "info", `  ${tables.length} table(s) in ${schemaLabel}`);
 
     for (const table of tables) {
-      const columns = await connector.listColumns(schema.schema, table.table);
+      const columns = await connector.listColumns(schema.schema, table.table, schema.database);
       allColumns.push(...columns);
     }
 

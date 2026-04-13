@@ -37,6 +37,7 @@ export interface CrawlResult {
 
 export interface DocumentRecord {
   id: string;
+  database?: string;
   schema: string;
   table: string;
   content: string;
@@ -47,6 +48,7 @@ export interface DocumentRecord {
 export interface ChunkRecord {
   id: string;
   documentId: string;
+  database?: string;
   schema: string;
   table: string;
   content: string;

@@ -3,12 +3,12 @@ import type { UserScope } from "./scope.js";
 
 // ── Catalog: tables the warehouse connector has discovered ─────────────────
 const CATALOG_ROWS = [
-  { schema_name: "schema_a", table_name: "table_1", column_name: "col_a" },
-  { schema_name: "schema_a", table_name: "table_1", column_name: "col_b" },
-  { schema_name: "schema_a", table_name: "table_1", column_name: "col_c" },
-  { schema_name: "schema_a", table_name: "table_1", column_name: "secret_col" },
-  { schema_name: "schema_b", table_name: "secret_table", column_name: "x" },
-  { schema_name: "schema_b", table_name: "secret_table", column_name: "y" },
+  { database_name: "", schema_name: "schema_a", table_name: "table_1", column_name: "col_a" },
+  { database_name: "", schema_name: "schema_a", table_name: "table_1", column_name: "col_b" },
+  { database_name: "", schema_name: "schema_a", table_name: "table_1", column_name: "col_c" },
+  { database_name: "", schema_name: "schema_a", table_name: "table_1", column_name: "secret_col" },
+  { database_name: "", schema_name: "schema_b", table_name: "secret_table", column_name: "x" },
+  { database_name: "", schema_name: "schema_b", table_name: "secret_table", column_name: "y" },
 ];
 
 const mockQuery = jest.fn();

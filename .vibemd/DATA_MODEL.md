@@ -149,6 +149,7 @@ Catalog of columns discovered per warehouse connector during ingest crawl. Popul
 | Column | Type | Notes |
 |--------|------|-------|
 | connector_id | UUID | FK `warehouse_connectors` |
+| database_name | TEXT | NOT NULL DEFAULT '', Snowflake database name (empty for single-DB connectors) |
 | schema_name | TEXT | |
 | table_name | TEXT | |
 | column_name | TEXT | |
@@ -182,6 +183,7 @@ Column-level allowlist rows for a scope (warehouse connector + schema + table + 
 |--------|------|-------|
 | scope_id | UUID | FK `scopes` |
 | connector_id | UUID | FK `warehouse_connectors` |
+| database_name | TEXT | NOT NULL DEFAULT '', matches connector_columns dimension |
 | schema_name | TEXT | |
 | table_name | TEXT | |
 | column_name | TEXT | |

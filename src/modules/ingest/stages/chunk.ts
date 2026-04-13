@@ -50,6 +50,7 @@ export async function runChunkText(
       allChunks.push({
         id: `${doc.id}_chunk_${j}`,
         documentId: doc.id,
+        database: doc.database,
         schema: doc.schema,
         table: doc.table,
         content: textChunks[j],

@@ -29,6 +29,13 @@ const SYSTEM_SCHEMAS = new Set([
   "reader_account_usage",
 ]);
 
+function catalogKey(database: string, schema: string, table: string): string {
+  const db = database.toLowerCase();
+  const s = schema.toLowerCase();
+  const t = table.toLowerCase();
+  return db ? `${db}.${s}.${t}` : `${s}.${t}`;
+}
+
 async function resolveConnectorDialect(userId: string, connectorId: string): Promise<string> {
   const result = await withUserContext(userId, async (client) => {
     return client.query<{ type: string }>(
@@ -45,15 +52,15 @@ async function loadCatalogForConnector(
   connectorId: string,
 ): Promise<Map<string, string[]>> {
   const result = await withUserContext(userId, async (client) => {
-    return client.query<{ schema_name: string; table_name: string; column_name: string }>(
-      "SELECT schema_name, table_name, column_name FROM connector_columns WHERE connector_id = $1",
+    return client.query<{ database_name: string; schema_name: string; table_name: string; column_name: string }>(
+      "SELECT COALESCE(database_name, '') AS database_name, schema_name, table_name, column_name FROM connector_columns WHERE connector_id = $1",
       [connectorId],
     );
   });
 
   const catalog = new Map<string, string[]>();
   for (const row of result.rows) {
-    const key = `${row.schema_name}.${row.table_name}`.toLowerCase();
+    const key = catalogKey(row.database_name, row.schema_name, row.table_name);
     if (!catalog.has(key)) catalog.set(key, []);
     catalog.get(key)!.push(row.column_name.toLowerCase());
   }
@@ -66,7 +73,7 @@ function buildScopeTableMap(scope: UserScope, connectorId: string): ScopeTableMa
   const map: ScopeTableMap = new Map();
   for (const col of scope.columns) {
     if (col.connectorId !== connectorId) continue;
-    const key = `${col.schemaName}.${col.tableName}`.toLowerCase();
+    const key = catalogKey(col.databaseName ?? "", col.schemaName, col.tableName);
     if (!map.has(key)) map.set(key, new Set());
     map.get(key)!.add(col.columnName.toLowerCase());
   }
@@ -76,6 +83,7 @@ function buildScopeTableMap(scope: UserScope, connectorId: string): ScopeTableMa
 interface TableRef {
   qualified: string;
   alias: string | null;
+  database: string;
   schema: string;
   table: string;
 }
@@ -89,12 +97,27 @@ function extractTableRefs(from: unknown): TableRef[] {
   if (node.type === "dual") return refs;
 
   if (typeof node.table === "string") {
-    const schema = typeof node.schema === "string" ? node.schema : "";
-    const db = typeof node.db === "string" ? node.db : "";
-    const effectiveSchema = schema || db;
-    const qualified = effectiveSchema ? `${effectiveSchema}.${node.table}` : node.table;
+    const rawSchema = typeof node.schema === "string" ? node.schema : "";
+    const rawDb = typeof node.db === "string" ? node.db : "";
+
+    let effectiveDb = "";
+    let effectiveSchema = "";
+    if (rawDb && rawSchema) {
+      effectiveDb = rawDb;
+      effectiveSchema = rawSchema;
+    } else if (rawDb && !rawSchema) {
+      effectiveSchema = rawDb;
+    } else {
+      effectiveSchema = rawSchema;
+    }
+
+    const qualified = effectiveDb
+      ? `${effectiveDb}.${effectiveSchema}.${node.table}`
+      : effectiveSchema
+        ? `${effectiveSchema}.${node.table}`
+        : node.table;
     const alias = typeof node.as === "string" ? node.as : null;
-    refs.push({ qualified, alias, schema: effectiveSchema, table: node.table });
+    refs.push({ qualified, alias, database: effectiveDb, schema: effectiveSchema, table: node.table });
   }
 
   if (Array.isArray(node.columns)) {
@@ -123,10 +146,10 @@ function resolveTableKey(
     if (match) return match;
   }
 
-  const match = [...catalog.keys()].find(
+  const candidates = [...catalog.keys()].filter(
     (k) => k === lower || k.endsWith(`.${lower}`)
   );
-  if (match) return match;
+  if (candidates.length === 1) return candidates[0];
 
   return null;
 }
@@ -341,10 +364,10 @@ function validateSelectNode(
       const lt = ref.table.toLowerCase();
       const lq = ref.qualified.toLowerCase();
       if (localAliases.has(lq) || localAliases.has(lt)) continue;
-      const catalogKey = resolveTableKey(ref.qualified, tableRefs, ctx.catalog);
-      if (!catalogKey) continue;
-      const catalogCols = ctx.catalog.get(catalogKey) ?? [];
-      const allowedCols = ctx.scopeMap.get(catalogKey);
+      const ck = resolveTableKey(ref.qualified, tableRefs, ctx.catalog);
+      if (!ck) continue;
+      const catalogCols = ctx.catalog.get(ck) ?? [];
+      const allowedCols = ctx.scopeMap.get(ck);
       if (catalogCols.some((c) => !allowedCols?.has(c))) {
         return (
           "SELECT * is not allowed here because the table contains columns outside your scope. " +
@@ -389,9 +412,9 @@ function validateSelectNode(
   for (const colRef of allColRefs) {
     const colName = colRef.column.toLowerCase();
     if (colRef.table) {
-      const catalogKey = resolveTableKey(colRef.table, tableRefs, ctx.catalog);
-      if (catalogKey) {
-        const allowedCols = ctx.scopeMap.get(catalogKey);
+      const ck = resolveTableKey(colRef.table, tableRefs, ctx.catalog);
+      if (ck) {
+        const allowedCols = ctx.scopeMap.get(ck);
         if (!allowedCols || !allowedCols.has(colName)) {
           return `Access denied: column "${colRef.column}" is not in your scope. Contact your admin.`;
         }
@@ -414,10 +437,10 @@ function validateSelectNode(
       let foundAllowed = false;
       let checkedAnyTable = false;
       for (const tRef of tableRefs) {
-        const catalogKey = resolveTableKey(tRef.qualified, tableRefs, ctx.catalog);
-        if (!catalogKey) continue;
+        const ck = resolveTableKey(tRef.qualified, tableRefs, ctx.catalog);
+        if (!ck) continue;
         checkedAnyTable = true;
-        if (ctx.scopeMap.get(catalogKey)?.has(colName)) {
+        if (ctx.scopeMap.get(ck)?.has(colName)) {
           foundAllowed = true;
           break;
         }
@@ -495,7 +518,6 @@ export async function validateAndRewriteSql(
       };
     }
 
-    // Recursive table + column validation (CTEs, subqueries, JOINs, UNION, etc.)
     const ctx: ValidateCtx = { scopeMap, catalog, knownAliases: new Set() };
     const validationError = validateSelectNode(s, ctx, 0);
     if (validationError) {
@@ -525,13 +547,13 @@ export async function validateAndRewriteSql(
 
       const expandedCols: unknown[] = [];
       for (const ref of tableRefs) {
-        const catalogKey = resolveTableKey(ref.qualified, tableRefs, catalog);
-        if (!catalogKey) continue;
+        const ck = resolveTableKey(ref.qualified, tableRefs, catalog);
+        if (!ck) continue;
 
-        const allowedCols = scopeMap.get(catalogKey);
+        const allowedCols = scopeMap.get(ck);
         if (!allowedCols || allowedCols.size === 0) continue;
 
-        const allCols = catalog.get(catalogKey) ?? [];
+        const allCols = catalog.get(ck) ?? [];
         const allowed = allCols.filter((c) => allowedCols.has(c));
 
         for (const colName of allowed) {
