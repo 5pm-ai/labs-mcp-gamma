@@ -17,12 +17,12 @@
 | gamma-redis | Memorystore | Redis 7.2 (Basic, 1GB) | us-east4, private IP 10.20.1.3:6378 | persistent | braun | 2026-03-17 | TLS in-transit encryption enabled. No public IP. |
 | gamma-bastion | Compute Engine | Bastion host (e2-micro, Debian 12) | us-east4-a, 10.10.2.2 | persistent | braun | 2026-03-17 | No public IP. IAP SSH only. SA: sa-bastion |
 | gamma-docker | Artifact Registry | Docker image repository | us-east4 | persistent | braun | 2026-03-17 | IAM-gated, no public access |
-| gamma-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-04-09 | Ingress: internal-and-cloud-load-balancing. SA: sa-mcp-server. Image: mcp-server:v16. max-instances: 3. Pool.max: 3. |
+| gamma-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-04-09 | Ingress: internal-and-cloud-load-balancing. SA: sa-mcp-server. Image: mcp-server:v17. max-instances: 3. Pool.max: 3. |
 | db-migrate | Cloud Run Job | Database schema init / migrations | us-east4 | persistent | braun | 2026-03-17 | On-demand: `gcloud run jobs execute db-migrate` SA: sa-db-admin |
 | gamma-ingest-worker | Cloud Run Job | Metadata ingest pipeline (preflight → upsert) | us-east4 | persistent | braun | 2026-03-24 | No public ingress. SA: sa-ingest-worker. Dispatched by ctrl-api |
 | sa-ingest-worker | IAM Service Account | Runtime identity for ingest job | ai-5pm-labs.iam.gserviceaccount.com | persistent | braun | 2026-03-24 | See Service Accounts table for IAM bindings |
 | ingest_app | Postgres role | RLS-scoped DB role for ingest worker | gamma-pg / mcp | persistent | braun | 2026-03-24 | No credential write access; see db migrations |
-| ingest-worker:v5 | Container image | Ingest job Docker image | Artifact Registry (gamma-docker) | persistent | braun | 2026-04-07 | Built from `Dockerfile.worker`. Pool.max: 2. |
+| ingest-worker:v6 | Container image | Ingest job Docker image | Artifact Registry (gamma-docker) | persistent | braun | 2026-04-07 | Built from `Dockerfile.worker`. Pool.max: 2. |
 | googleapis-internal | Cloud DNS Zone | Private zone mapping *.googleapis.com to restricted VIPs (199.36.153.4/30) | gamma-vpc | persistent | braun | 2026-03-25 | Required for Cloud Run Jobs with all-traffic VPC egress to reach KMS/Secret Manager via PGA |
 | gamma-5pm-ai-origin | SSL Certificate | Cloudflare Origin CA (self-managed) | global, GCP | persistent | braun | 2026-03-17 | Wildcard *.5pm.ai, expires 2040-06-06 |
 | gamma-mcp-neg | Serverless NEG | Cloud Run -> LB bridge | us-east4 | persistent | braun | 2026-03-17 | Points to gamma-mcp Cloud Run service |
@@ -104,7 +104,7 @@
 | prod-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-04-07 | Min 2 instances, 1GiB. SA: sa-mcp-server |
 | prod-ctrl-api | Cloud Run Service | Control plane API | us-east4 | persistent | braun | 2026-04-07 | Min 2 instances, 512MiB. SA: sa-mcp-server |
 | prod-ctrl | Cloud Run Service | Control plane SPA | us-east4 | persistent | braun | 2026-04-13 | Min 1 instance, 256MiB. nginx static. Image: ctrl-plane:v15 |
-| prod-ctrl-api | Cloud Run Service | Control plane API | us-east4 | persistent | braun | 2026-04-10 | Min 2 instances, 512MiB. Image: ctrl-api:v3. SF write probe: 2-category (permanent vs temporary). |
+| prod-ctrl-api | Cloud Run Service | Control plane API | us-east4 | persistent | braun | 2026-04-10 | Min 2 instances, 512MiB. Image: ctrl-api:v4. SF write probe: 2-category (permanent vs temporary). |
 | db-migrate | Cloud Run Job | Database schema init | us-east4 | persistent | braun | 2026-04-07 | SA: sa-db-admin |
 | prod-ingest-worker | Cloud Run Job | Ingest pipeline worker | us-east4 | persistent | braun | 2026-04-07 | SA: sa-ingest-worker |
 | prod-keys | KMS keyring | Credential encryption keys | us-east4 | persistent | braun | 2026-04-07 | |
