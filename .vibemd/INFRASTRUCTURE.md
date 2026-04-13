@@ -103,7 +103,8 @@
 | prod-docker | Artifact Registry | Docker image repository | us-east4 | persistent | braun | 2026-04-07 | IAM-gated |
 | prod-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-04-07 | Min 2 instances, 1GiB. SA: sa-mcp-server |
 | prod-ctrl-api | Cloud Run Service | Control plane API | us-east4 | persistent | braun | 2026-04-07 | Min 2 instances, 512MiB. SA: sa-mcp-server |
-| prod-ctrl | Cloud Run Service | Control plane SPA | us-east4 | persistent | braun | 2026-04-08 | Min 1 instance, 256MiB. nginx static. Image: ctrl-plane:v5 |
+| prod-ctrl | Cloud Run Service | Control plane SPA | us-east4 | persistent | braun | 2026-04-10 | Min 1 instance, 256MiB. nginx static. Image: ctrl-plane:v14 |
+| prod-ctrl-api | Cloud Run Service | Control plane API | us-east4 | persistent | braun | 2026-04-10 | Min 2 instances, 512MiB. Image: ctrl-api:v3. SF write probe: 2-category (permanent vs temporary). |
 | db-migrate | Cloud Run Job | Database schema init | us-east4 | persistent | braun | 2026-04-07 | SA: sa-db-admin |
 | prod-ingest-worker | Cloud Run Job | Ingest pipeline worker | us-east4 | persistent | braun | 2026-04-07 | SA: sa-ingest-worker |
 | prod-keys | KMS keyring | Credential encryption keys | us-east4 | persistent | braun | 2026-04-07 | |
