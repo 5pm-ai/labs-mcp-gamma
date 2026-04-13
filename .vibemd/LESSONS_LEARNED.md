@@ -212,3 +212,22 @@
 - If auth or onboarding creates ephemeral rows in shared identity tables, treat **`DELETE`** as a first-class requirement for the application role.
 
 **Refs:** `labs-saas-ctrl/db/init.sql` (grants for `ctrl_app`)
+
+---
+
+### [2026-04-13] Prod SPA deployed with gamma Auth0 client_id — Dockerfile default not overridden
+
+**Context:** Deploying `ctrl-plane:v14` to the `prod-ctrl` Cloud Run service in `ai-5pm-mcp`. The Dockerfile has gamma-environment defaults for all `VITE_*` build args.
+
+**Symptoms:** Users visiting `mcp.5pm.ai` and clicking login got "redirect_uri is not allowed" from Auth0. The SPA was redirecting to Auth0 with the gamma SPA client_id (`nEejna8VWdHg3GR56DK9pbG6lj828yYg`), whose allowed callbacks did not include `mcp.5pm.ai`.
+
+**Root Cause:** The `docker buildx build` command for the prod SPA correctly overrode `VITE_AUTH0_AUDIENCE` and `VITE_APP_ORIGIN`, but **did not override `VITE_AUTH0_CLIENT_ID`**. The Dockerfile default (`nEejna8VWdHg3GR56DK9pbG6lj828yYg`) is the gamma SPA Auth0 app. The prod SPA Auth0 app (`nsflJdrV8RsRoc6qarMWjl934jZkZkt0`) was never referenced.
+
+**Resolution:** Rebuilt `ctrl-plane:v15` with `--build-arg VITE_AUTH0_CLIENT_ID=nsflJdrV8RsRoc6qarMWjl934jZkZkt0` and all other prod build args. Deployed to `prod-ctrl`. Verified the live JS bundle contains the correct client_id.
+
+**Prevention:**
+- Updated `rotate-secrets.sh` with `--target prod` support and `--check-build-args` flag that curls the live SPA and verifies baked-in Auth0 client_id and audience match expected values per target.
+- Prod builds must explicitly set **all** `VITE_*` build args — the Dockerfile defaults are gamma values. Documented the exact prod build command in `ROTATE_SECRETS.md`.
+- Run `./scripts/rotate-secrets.sh --target all --check-build-args --validate` after any SPA deployment.
+
+**Refs:** `scripts/rotate-secrets.sh`, `scripts/ROTATE_SECRETS.md`
