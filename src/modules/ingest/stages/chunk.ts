@@ -21,6 +21,7 @@ function splitIntoChunks(text: string): string[] {
     }
 
     chunks.push(text.slice(start, end));
+    if (end >= text.length) break;
     start = Math.max(start + 1, end - OVERLAP_CHARS);
   }
 
