@@ -241,3 +241,13 @@
 **Resolution:** Added `database_name TEXT NOT NULL DEFAULT ''` to both `connector_columns` and `scope_columns` tables. Updated unique constraints to include `database_name`. Propagated `database` field through all warehouse types (`SchemaInfo`, `TableInfo`, `ColumnInfo`, `RelationshipInfo`), Snowflake connector methods, ingest pipeline (crawl, persist_catalog, documents, chunk, upsert), SQL validator (catalog keys, `extractTableRefs`, `resolveTableKey`, `buildScopeTableMap`), scope service (`UserScope`, `sanitizeSinkResults`), and saas-ctrl scope API/Zod schemas. BigQuery and ClickHouse connectors unaffected (single-database, empty `database_name`).
 **Prevention:** Any future warehouse connector type that supports multi-database must propagate the `database` field. The `extractTableRefs` function handles both 2-part and 3-part SQL references via parser AST field detection (db vs schema).
 **Refs:** persist_catalog fix, sql-validator update, saas-ctrl DDL migration
+
+---
+
+### [2026-04-14] saas-ctrl: databaseName missing from scope frontend + payload too large
+**Context:** Follow-on from the multi-DB namespace fix above. The `database_name` column was added to backend tables and API Zod schemas, but the saas-ctrl SPA (`DashboardScopes.tsx`) was never updated.
+**Symptoms:** Saving a user permission scope with many columns (10K+) returned 413 Payload Too Large. Multi-DB scopes silently lost `databaseName` (defaulted to `""` server-side). Row-by-row INSERT caused slow scope saves.
+**Root Cause:** Three issues in saas-ctrl: (1) Express body limit 1MB too low. (2) Frontend types/keys/tree omitted `databaseName`. (3) `scope_columns` INSERT was row-by-row.
+**Resolution:** (1) Body limit → 10MB. (2) `databaseName` added to `ApiScopeColumn`, `CatalogColumn`, `colKey` (5-segment), `parseColKey`, `catalogToTree`, ColumnTree UI. (3) Batch INSERT of 500 rows. E2E test with 10K columns.
+**Prevention:** When propagating a new field through the backend, always audit the full frontend round-trip: types, key serialization, tree grouping, display, and test coverage.
+**Refs:** saas-ctrl `server/src/routes/scopes.ts`, `src/pages/DashboardScopes.tsx`
