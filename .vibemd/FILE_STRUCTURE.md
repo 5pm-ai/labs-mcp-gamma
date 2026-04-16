@@ -80,7 +80,8 @@ MCP protocol module. Transport-agnostic, depends only on `ITokenValidator`.
 | `handlers/shttp.test.ts` | Unit tests for SHTTP handler |
 | `handlers/shttp.integration.test.ts` | Integration tests for SHTTP |
 | `handlers/sse.ts` | Legacy SSE transport handler |
-| `services/mcp.ts` | MCP server instance (tools, resources, prompts); warehouse/sink tool handlers enforce scopes (`resolveUserScope`, SQL validation, Pinecone metadata filters) |
+| `services/mcp.ts` | MCP server instance (tools, resources, prompts); warehouse/sink tool handlers enforce scopes (`resolveUserScope`, SQL validation, Pinecone metadata filters). Includes `list_connectors` tool for caching-client compatibility. |
+| `services/mcp.test.ts` | Unit tests for MCP server — list_connectors tool, explore tool registration, stale-connector error handling |
 | `services/scope.ts` | Scope resolution for MCP tools — `resolveUserScope`, `buildSinkFilter`, `getAllowedColumnsForConnector`, `getConnectorColumnsLookup` |
 | `services/sql-validator.ts` | SQL parsing (`node-sql-parser`), `SELECT *` rewrite, column allowlisting against `connector_columns` |
 | `services/redisTransport.ts` | `ServerRedisTransport` — pub/sub relay for SHTTP sessions |

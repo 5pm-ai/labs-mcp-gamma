@@ -44,6 +44,7 @@ const SinkQuerySchema = z.object({
 });
 
 enum ToolName {
+  LIST_CONNECTORS = "list_connectors",
   WAREHOUSE = "warehouse",
   SINK = "sink",
   EXPLORE_WAREHOUSE = "explore_warehouse",
@@ -469,16 +470,27 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
     if (isWarehouseAvailable()) {
       const { warehouses, sinks } = await getScopedConnectors();
 
+      tools.push({
+        name: ToolName.LIST_CONNECTORS,
+        description:
+          "List available warehouse and sink connector IDs for your team. " +
+          "Call this tool FIRST if no connector IDs are shown in other tool descriptions, " +
+          "or if a connector ID was rejected. " +
+          "Recommended workflow: (1) list_connectors to get IDs, (2) sink to discover schemas/tables, (3) warehouse to query data.",
+        inputSchema: { type: "object" as const, properties: {} },
+      });
+
       const connectorList = warehouses.length > 0
         ? warehouses.map((w) => `${w.name} (${w.type}) id:${w.id}`).join("; ")
-        : "none configured";
+        : "none configured — call list_connectors to check for updates";
 
       const catalog = sinks.length > 0 ? await getIngestCatalog() : [];
       const hasCatalog = catalog.length > 0;
 
+      const connectorHint = "If connector IDs above are missing or outdated, call list_connectors to get current IDs.";
       const whDesc = hasCatalog
-        ? `Execute a SQL statement against a data warehouse. IMPORTANT: Use the "sink" tool first to discover available schemas, tables, and columns before writing SQL. The sink contains an indexed catalog of the warehouse structure. Available connectors: ${connectorList}`
-        : `Execute a SQL statement against a data warehouse. Available connectors: ${connectorList}`;
+        ? `Execute a SQL statement against a data warehouse. IMPORTANT: Use the "sink" tool first to discover available schemas, tables, and columns before writing SQL. The sink contains an indexed catalog of the warehouse structure. Available connectors: ${connectorList}. ${connectorHint}`
+        : `Execute a SQL statement against a data warehouse. Available connectors: ${connectorList}. ${connectorHint}`;
 
       const whIds = warehouses.map((w) => w.id);
       const whSchema = toJsonSchema(WarehouseQuerySchema);
@@ -513,27 +525,23 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
       tools.push({
         name: ToolName.SINK,
         description:
-          `Search the data catalog to discover database structure — schemas, tables, columns, and relationships. Use this tool to understand what data is available before querying a warehouse. Accepts a natural language query (e.g. "customer orders", "revenue by region"). Returns matching table descriptions with schema, column types, and foreign key relationships${catalogSummary}`,
+          `Search the data catalog to discover database structure — schemas, tables, columns, and relationships. Use this tool to understand what data is available before querying a warehouse. Accepts a natural language query (e.g. "customer orders", "revenue by region"). Returns matching table descriptions with schema, column types, and foreign key relationships${catalogSummary}. ${connectorHint}`,
         inputSchema: sinkSchema,
       });
 
-      if (sinks.length > 0) {
-        tools.push({
-          name: ToolName.EXPLORE_SINK,
-          description: `Visual explorer for data catalog search results. Same as the sink tool but renders results in an interactive UI. Use to visually browse discovered schemas, tables, columns, and relationships`,
-          inputSchema: sinkSchema,
-          _meta: { ui: { resourceUri: SINK_APP_URI } },
-        });
-      }
+      tools.push({
+        name: ToolName.EXPLORE_SINK,
+        description: `Visual explorer for data catalog search results. Same as the sink tool but renders results in an interactive UI. Use to visually browse discovered schemas, tables, columns, and relationships. ${connectorHint}`,
+        inputSchema: sinkSchema,
+        _meta: { ui: { resourceUri: SINK_APP_URI } },
+      });
 
-      if (warehouses.length > 0) {
-        tools.push({
-          name: ToolName.EXPLORE_WAREHOUSE,
-          description: `Visual SQL explorer for warehouse query results. Same as the warehouse tool but renders results in an interactive table UI. Use after discovering tables via the sink tool`,
-          inputSchema: whSchema,
-          _meta: { ui: { resourceUri: WAREHOUSE_APP_URI } },
-        });
-      }
+      tools.push({
+        name: ToolName.EXPLORE_WAREHOUSE,
+        description: `Visual SQL explorer for warehouse query results. Same as the warehouse tool but renders results in an interactive table UI. Use after discovering tables via the sink tool. ${connectorHint}`,
+        inputSchema: whSchema,
+        _meta: { ui: { resourceUri: WAREHOUSE_APP_URI } },
+      });
     }
 
     return { tools };
@@ -541,6 +549,20 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+
+    if (name === ToolName.LIST_CONNECTORS) {
+      const { warehouses, sinks } = await getScopedConnectors();
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            warehouses: warehouses.map((w) => ({ id: w.id, name: w.name, type: w.type, status: w.status })),
+            sinks: sinks.map((s) => ({ id: s.id, name: s.name, type: s.type, status: s.status })),
+            workflow: "Use a sink connector ID with the sink tool to discover schemas/tables, then use a warehouse connector ID with the warehouse tool to query data.",
+          }, null, 2),
+        }],
+      };
+    }
 
     if (name === ToolName.WAREHOUSE || name === ToolName.EXPLORE_WAREHOUSE) {
       const { sql, connectorId } = WarehouseQuerySchema.parse(args);
@@ -568,13 +590,24 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
         }
       }
 
-      const result = await executeWarehouseQuery(userId, connectorId, finalSql);
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({ columns: result.columns, rows: result.rows, rowCount: result.rowCount }, null, 2),
-        }],
-      };
+      try {
+        const result = await executeWarehouseQuery(userId, connectorId, finalSql);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({ columns: result.columns, rows: result.rows, rowCount: result.rowCount }, null, 2),
+          }],
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("not found") || msg.includes("access denied")) {
+          return {
+            content: [{ type: "text", text: `Warehouse connector "${connectorId}" was not found or is not accessible. The connector ID may be outdated — call the list_connectors tool to get current connector IDs, then retry.` }],
+            isError: true,
+          };
+        }
+        throw err;
+      }
     }
 
     if (name === ToolName.SINK || name === ToolName.EXPLORE_SINK) {
@@ -602,19 +635,30 @@ export const createMcpServer = (userId: string): McpServerWrapper => {
         }
       }
 
-      const result = await executeSinkTextQuery(userId, connectorId, query, topK, config.openai.apiKey, namespace, sinkFilter);
+      try {
+        const result = await executeSinkTextQuery(userId, connectorId, query, topK, config.openai.apiKey, namespace, sinkFilter);
 
-      let matches = result.matches;
-      if (activeScope) {
-        matches = sanitizeSinkResults(matches, activeScope);
+        let matches = result.matches;
+        if (activeScope) {
+          matches = sanitizeSinkResults(matches, activeScope);
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({ matches, namespace: result.namespace }, null, 2),
+          }],
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("not found") || msg.includes("access denied")) {
+          return {
+            content: [{ type: "text", text: `Sink connector "${connectorId}" was not found or is not accessible. The connector ID may be outdated — call the list_connectors tool to get current connector IDs, then retry.` }],
+            isError: true,
+          };
+        }
+        throw err;
       }
-
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({ matches, namespace: result.namespace }, null, 2),
-        }],
-      };
     }
 
     throw new Error(`Unknown tool: ${name}`);
