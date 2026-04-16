@@ -1,3 +1,3 @@
 # vibe-commit
 
-let's handle unstaged commits, sync applicable `.vibemd/` docs, according to rules
+handle unstaged commits, sync applicable relative `.vibemd/` docs, according to rules
