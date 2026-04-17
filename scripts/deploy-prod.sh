@@ -57,6 +57,7 @@ PROD_AUTH0_AUDIENCE="https://api.mcp.5pm.ai"
 PROD_APP_ORIGIN="https://mcp.5pm.ai"
 PROD_STRIPE_PK="pk_live_51T7k37A4ISKxBM0V6ElTU1AvCpHvSH76g3l8ferglld26a1M0xgPcEkc1Q7S5BRxXn3DTvq1jqAzW9X24L1w8V1l00rxjnhIDc"
 PROD_DEPLOYMENT_ENV="production"
+PROD_GA_MEASUREMENT_ID="G-NN1CKPZMTV"
 
 # ─── Version bump ─────────────────────────────────────────────────────────────
 
@@ -108,6 +109,7 @@ log "  VITE_AUTH0_AUDIENCE  : ${PROD_AUTH0_AUDIENCE}"
 log "  VITE_APP_ORIGIN      : ${PROD_APP_ORIGIN}"
 log "  VITE_STRIPE_PK       : ${PROD_STRIPE_PK:0:25}..."
 log "  VITE_DEPLOYMENT_ENV  : ${PROD_DEPLOYMENT_ENV}"
+log "  VITE_GA_MEASUREMENT_ID: ${PROD_GA_MEASUREMENT_ID}"
 log ""
 
 if $DRY_RUN; then
@@ -145,6 +147,7 @@ if ! $SKIP_BUILD; then
     --build-arg VITE_STRIPE_PUBLISHABLE_KEY="$PROD_STRIPE_PK" \
     --build-arg VITE_APP_ORIGIN="$PROD_APP_ORIGIN" \
     --build-arg VITE_DEPLOYMENT_ENV="$PROD_DEPLOYMENT_ENV" \
+    --build-arg VITE_GA_MEASUREMENT_ID="$PROD_GA_MEASUREMENT_ID" \
     -t "$SPA_TAG" -f "$CTRL_REPO/Dockerfile" "$CTRL_REPO"
   ok "Built $SPA_TAG"
 
@@ -219,6 +222,12 @@ if [[ -n "$BUNDLE_URL" ]]; then
     ok "SPA Auth0 audience: correct (prod)"
   else
     warn "SPA Auth0 audience: MISMATCH — may have gamma values baked in!"
+  fi
+
+  if echo "$BUNDLE" | grep -q "$PROD_GA_MEASUREMENT_ID"; then
+    ok "SPA GA measurement ID: baked in (${PROD_GA_MEASUREMENT_ID})"
+  else
+    warn "SPA GA measurement ID: NOT found in bundle — check VITE_GA_MEASUREMENT_ID build arg!"
   fi
 fi
 
