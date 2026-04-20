@@ -76,6 +76,22 @@ Cloud Run (gamma-mcp, ingress: internal-and-cloud-load-balancing)
 | gamma-lb-ip | 34.54.83.204 (global) | External LB frontend, Cloudflare A record target |
 | gamma-nat-ip-1 | 34.150.236.79 (us-east4) | Cloud NAT egress, use for upstream IP whitelisting |
 
+### Cloudflare DNS (zone: `5pm.ai`)
+
+| Hostname | Record | Target | Proxy | Purpose |
+|---|---|---|---|---|
+| `gamma.5pm.ai` | A | `34.54.83.204` | proxied | Cloud dev / staging LB |
+| `mcp.5pm.ai` | A | `34.8.216.219` | proxied | Production LB |
+| `5pm.ai` (apex) | AAAA | `100::` (blackhole) | proxied | Holds hostname at edge so redirect rule fires; origin is intentionally unroutable |
+| `www.5pm.ai` | CNAME | `5pm.ai` | proxied | Flattens to apex edge IPs so redirect rule catches www too |
+
+Apex + `www` traffic is terminated entirely at Cloudflare via **Page Rules → Forwarding URL** (302 → 301 after validation):
+
+- `5pm.ai/*` → `https://mcp.5pm.ai/$1`
+- `www.5pm.ai/*` → `https://mcp.5pm.ai/$1`
+
+Path and query string are preserved. No apex request ever reaches GCP LB or Cloud Run — origin is a blackhole by design so defense-in-depth holds even if the rule is ever disabled. MX / SPF / DKIM / DMARC / domain-verification TXT records on the apex are unaffected by the redirect; Google Workspace mail on `@5pm.ai` continues to work normally.
+
 ### VPC CIDR Plan
 
 | Range | Purpose | Notes |

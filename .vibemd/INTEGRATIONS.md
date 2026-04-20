@@ -24,9 +24,18 @@
 ## Cloudflare
 
 - **Domain**: `5pm.ai` (managed via Cloudflare dashboard)
-- **DNS**: `gamma.5pm.ai` A record → `34.54.83.204` (proxied, orange cloud)
+- **Nameservers**: `aaron.ns.cloudflare.com`, `josephine.ns.cloudflare.com`
+- **DNS (proxied, orange cloud)**:
+  - `gamma.5pm.ai` A → `34.54.83.204` (gamma LB)
+  - `mcp.5pm.ai` A → `34.8.216.219` (prod LB)
+  - `5pm.ai` (apex) AAAA → `100::` (blackhole; edge-only, never contacts origin)
+  - `www.5pm.ai` CNAME → `5pm.ai` (flattens to same edge)
 - **SSL/TLS**: Full mode (encrypts Cloudflare-to-origin, does not validate origin cert)
-- **Origin CA cert**: Wildcard `*.5pm.ai`, PEM format, expires 2040-06-06. Stored locally in `.cloudflare/` (gitignored). Uploaded to GCP as `gamma-5pm-ai-origin` self-managed SSL certificate.
+- **Origin CA cert**: Wildcard `*.5pm.ai`, PEM format, expires 2040-06-06. Stored locally in `.cloudflare/` (gitignored). Uploaded to GCP as `gamma-5pm-ai-origin` (gamma) and `prod-5pm-ai-origin` (prod) self-managed SSL certificates.
+- **Page Rules (apex redirect)**:
+  - `5pm.ai/*` → Forwarding URL → `https://mcp.5pm.ai/$1` (302, flip to 301 after validation)
+  - `www.5pm.ai/*` → Forwarding URL → `https://mcp.5pm.ai/$1` (302, flip to 301 after validation)
+- **Mail**: MX → Google Workspace (`aspmx.l.google.com` + 4 alts), SPF via `_spf.google.com`, Postmark DKIM on `20260306164538pm._domainkey`, Google DKIM on `google._domainkey`, DMARC `p=none` with Cloudflare aggregate reports. Redirects are HTTP-only and do not affect mail.
 
 ## Redis
 

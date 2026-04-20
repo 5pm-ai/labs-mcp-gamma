@@ -127,4 +127,8 @@
 | Auth0 API (prod) | resource server | JWT audience for prod | ai-5pm-labs.us.auth0.com | persistent | braun | 2026-04-07 | identifier: https://api.mcp.5pm.ai |
 | Cloudflare DNS (gamma) | DNS | gamma.5pm.ai A record (proxied) | Cloudflare 5pm.ai zone | persistent | braun | 2026-03-17 | A record -> 34.54.83.204, SSL/TLS: Full |
 | Cloudflare DNS (prod) | DNS | mcp.5pm.ai A record (proxied) | Cloudflare 5pm.ai zone | persistent | braun | 2026-04-07 | A record -> 34.8.216.219, SSL/TLS: Full |
+| Cloudflare DNS (apex) | DNS | 5pm.ai AAAA (blackhole, proxied) | Cloudflare 5pm.ai zone | persistent | braun | 2026-04-17 | AAAA -> 100:: . Holds hostname at edge for redirect rule; replaced prior GitHub Pages A records |
+| Cloudflare DNS (www) | DNS | www.5pm.ai CNAME (proxied) | Cloudflare 5pm.ai zone | persistent | braun | 2026-04-17 | CNAME -> 5pm.ai . Replaced prior GitHub Pages CNAME |
+| Cloudflare Page Rule (apex→mcp) | Page Rule | 5pm.ai/* → https://mcp.5pm.ai/$1 | Cloudflare 5pm.ai zone | persistent | braun | 2026-04-17 | Forwarding URL, 302 initially (flip to 301 after validation). Edge-only, never touches origin |
+| Cloudflare Page Rule (www→mcp) | Page Rule | www.5pm.ai/* → https://mcp.5pm.ai/$1 | Cloudflare 5pm.ai zone | persistent | braun | 2026-04-17 | Forwarding URL, 302 initially (flip to 301 after validation) |
 | Cloudflare Origin CA | certificate | TLS between Cloudflare and GCP LB | .cloudflare/ (gitignored) | persistent | braun | 2026-03-17 | Wildcard *.5pm.ai, expires 2040-06-06 |
