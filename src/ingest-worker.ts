@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   pool.on("error", (err) => console.error("Pool error:", err));
 
   try {
-    const { ingestId, ingest, whRow, sinkRow } = await withRlsContext(pool, async (client) => {
+    const { ingestId, ingest, whRow, sinkRow, keypairMaterial } = await withRlsContext(pool, async (client) => {
       const runResult = await client.query<{ ingest_id: string; status: string }>(
         "SELECT ingest_id, status FROM ingest_runs WHERE id = $1",
         [runId],
@@ -84,12 +84,36 @@ async function main(): Promise<void> {
         type: string; auth_method: string;
         credentials_enc: Buffer; credentials_iv: Buffer; credentials_tag: Buffer; wrapped_dek: Buffer;
         status: string;
+        keypair_id: string | null;
       }>(
-        "SELECT type, auth_method, credentials_enc, credentials_iv, credentials_tag, wrapped_dek, status FROM warehouse_connectors WHERE id = $1",
+        "SELECT type, auth_method, credentials_enc, credentials_iv, credentials_tag, wrapped_dek, status, keypair_id FROM warehouse_connectors WHERE id = $1",
         [ingest.warehouse_connector_id],
       );
       if (whResult.rows.length === 0) throw new Error("Warehouse connector not found");
       if (whResult.rows[0].status !== "connected") throw new Error(`Warehouse is '${whResult.rows[0].status}'`);
+
+      let keypairMaterial: { privateKeyPem: string; privateKeyPass?: string } | null = null;
+      if (whResult.rows[0].keypair_id) {
+        const kpResult = await client.query<{
+          private_key_enc: Buffer; private_key_iv: Buffer; private_key_tag: Buffer;
+          wrapped_dek: Buffer; status: string;
+        }>(
+          "SELECT private_key_enc, private_key_iv, private_key_tag, wrapped_dek, status FROM warehouse_keypairs WHERE id = $1",
+          [whResult.rows[0].keypair_id],
+        );
+        const kp = kpResult.rows[0];
+        if (!kp) throw new Error("Warehouse connector references a missing key pair");
+        if (kp.status !== "active") throw new Error(`Warehouse connector key pair is '${kp.status}'`);
+        const plaintext = await envelopeDecrypt({
+          ciphertext: kp.private_key_enc, iv: kp.private_key_iv,
+          authTag: kp.private_key_tag, wrappedDek: kp.wrapped_dek,
+        });
+        keypairMaterial = JSON.parse(plaintext) as { privateKeyPem: string; privateKeyPass?: string };
+        await client.query(
+          "UPDATE warehouse_keypairs SET last_used_at = now() WHERE id = $1",
+          [whResult.rows[0].keypair_id],
+        );
+      }
 
       const sinkResult = await client.query<{
         type: string;
@@ -102,13 +126,20 @@ async function main(): Promise<void> {
       if (sinkResult.rows.length === 0) throw new Error("Sink connector not found");
       if (sinkResult.rows[0].status !== "connected") throw new Error(`Sink is '${sinkResult.rows[0].status}'`);
 
-      return { ingestId, ingest, whRow: whResult.rows[0], sinkRow: sinkResult.rows[0] };
+      return { ingestId, ingest, whRow: whResult.rows[0], sinkRow: sinkResult.rows[0], keypairMaterial };
     });
 
     const whCreds = JSON.parse(await envelopeDecrypt({
       ciphertext: whRow.credentials_enc, iv: whRow.credentials_iv,
       authTag: whRow.credentials_tag, wrappedDek: whRow.wrapped_dek,
     })) as Record<string, unknown>;
+
+    if (keypairMaterial) {
+      whCreds.privateKeyPem = keypairMaterial.privateKeyPem;
+      if (keypairMaterial.privateKeyPass) {
+        whCreds.privateKeyPass = keypairMaterial.privateKeyPass;
+      }
+    }
 
     const warehouseType = whRow.type as WarehouseType;
     const authMethod = whRow.auth_method as AuthMethod;

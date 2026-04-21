@@ -69,6 +69,10 @@ UNIQUE: `(client_name, redirect_uris_hash)` — deduplication constraint
 | `session:{id}:owner` | Session ownership | 1 hour (TTL, refreshed on activity) |
 | `mcp:shttp:*` | Streamable HTTP pub/sub | Session lifetime |
 
+## Warehouse Key Pairs (defined in labs-saas-ctrl/db/init.sql, shared Postgres)
+
+Snowflake key-pair auth credentials are decoupled from `warehouse_connectors` via the new `warehouse_keypairs` table (team-scoped, envelope-encrypted). `warehouse_connectors.keypair_id` is a nullable FK — when set, the MCP server resolves the decrypted private key from `warehouse_keypairs` at connect time (inside the caller's `withUserContext` so `app.user_id` is available for RLS). `mcp_app` has team-scoped `SELECT` on `warehouse_keypairs`; `ingest_app` too. Private material is KMS-wrapped using the same envelope helper as connector credentials. See the saas-ctrl DATA_MODEL.md for the full column listing.
+
 ## Ingest Tables (defined in labs-saas-ctrl/db/init.sql, shared Postgres)
 
 ### ingests
