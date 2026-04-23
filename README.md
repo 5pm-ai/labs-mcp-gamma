@@ -194,7 +194,7 @@ The `examples/` directory contains scripts that interact with MCP endpoints dire
 npm run lint      # Code linting
 npm run typecheck # Type checking
 npm test          # Unit tests
-npm run test:e2e  # End-to-end tests
+npm run test:int  # Integration tests (OAuth / DCR / MCP protocol via HTTP)
 ```
 
 ## Project Structure

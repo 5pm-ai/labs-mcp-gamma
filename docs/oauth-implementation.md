@@ -364,7 +364,7 @@ npx @modelcontextprotocol/inspector
 
 # Run automated tests
 npm test -- --testNamePattern="OAuth"
-npm run test:e2e
+npm run test:int
 ```
 
 ### Common Issues and Solutions

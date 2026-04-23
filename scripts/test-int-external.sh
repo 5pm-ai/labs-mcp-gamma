@@ -12,7 +12,7 @@ for arg in "$@"; do
 done
 
 echo "=================================================="
-echo "End-to-End Test - EXTERNAL MODE"
+echo "Integration Test - EXTERNAL MODE"
 if $LIVE_MODE; then
   echo "  (live mode — using running local stack)"
 fi
@@ -92,7 +92,7 @@ if $LIVE_MODE; then
   fi
 
   echo ""
-  echo "✅ E2E TEST (EXTERNAL / LIVE MODE) COMPLETE!"
+  echo "✅ INTEGRATION TEST (EXTERNAL / LIVE MODE) COMPLETE!"
   echo "============================================="
   echo "✅ OAuth metadata valid"
   echo "✅ Protected Resource Metadata valid"
@@ -100,7 +100,7 @@ if $LIVE_MODE; then
   echo "✅ /mcp correctly rejects unauthenticated requests"
   echo ""
   echo "📎 For full authenticated MCP testing (external auth separation):"
-  echo "   Run standalone mode: npm run test:e2e:external"
+  echo "   Run standalone mode: npm run test:int:external"
   echo "   Or full integration: cd ../labs-saas-ctrl && npm run test:int:wizard"
 
 else
@@ -332,7 +332,7 @@ else
   echo "   ✅ Token caching working"
 
   echo ""
-  echo "✅ E2E TEST (EXTERNAL MODE) COMPLETE!"
+  echo "✅ INTEGRATION TEST (EXTERNAL MODE) COMPLETE!"
   echo "====================================="
   echo "✅ Separate auth and MCP servers"
   echo "✅ OAuth flow working via auth server"

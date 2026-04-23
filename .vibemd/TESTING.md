@@ -1,9 +1,16 @@
 # Testing
 
+Three-tier convention (shared with `labs-saas-ctrl`):
+
+- **unit** — in-process, no infra.
+- **int** — real HTTP against the MCP server (OAuth / DCR / PKCE / protocol smoke).
+- **e2e** — real browser / Playwright. Lives in `labs-saas-ctrl` (`test:e2e`); the MCP server has no browser surface of its own.
+
 ## Unit Tests
 
 ```bash
-npm test
+npm test          # alias for test:unit
+npm run test:unit
 ```
 
 - Runner: Jest (ESM mode via `ts-jest`)
@@ -13,16 +20,16 @@ npm test
 
 No external services required — tests use mocks.
 
-## E2E Tests
+## Integration Tests
 
 ### Live Mode (recommended for local development)
 
 Tests against the already-running local stack. Does not build, start, or kill anything.
 
 ```bash
-npm run test:e2e:live           # all modes
-npm run test:e2e:internal -- --live  # internal only
-npm run test:e2e:external -- --live  # external only
+npm run test:int:live           # all modes
+npm run test:int:internal -- --live  # internal only
+npm run test:int:external -- --live  # external only
 ```
 
 **Prerequisites:**
@@ -37,21 +44,21 @@ Live mode tests:
 - 401 rejection on unauthenticated `/mcp` requests
 - WWW-Authenticate header correctness
 
-Live mode does **not** test the authenticated MCP protocol flow because the running server uses real Auth0 (no mock IdP). Full authenticated testing — including OAuth flow, MCP tools, resources, and prompts — is covered by `labs-saas-ctrl`'s wizard e2e suite (see below).
+Live mode does **not** test the authenticated MCP protocol flow because the running server uses real Auth0 (no mock IdP). Full authenticated testing — including OAuth flow, MCP tools, resources, and prompts — is covered by `labs-saas-ctrl`'s `test:int:wizard` suite (see below).
 
 ### Standalone Mode (isolated, uses mock IdP from SDK scaffold)
 
 ```bash
-npm run test:e2e           # all (internal + external auth modes)
-npm run test:e2e:internal  # internal auth mode only
-npm run test:e2e:external  # external auth mode only
+npm run test:int           # all (internal + external auth modes)
+npm run test:int:internal  # internal auth mode only
+npm run test:int:external  # external auth mode only
 ```
 
 Standalone mode builds the project, starts fresh server instances on port 8090 (not 3232), runs Playwright-based flows using the SDK's mock upstream IdP, and shuts down. **This mode is not compatible with the running local stack** — it manages its own server lifecycle.
 
-### Full Integration Testing (via labs-saas-ctrl)
+### Full authenticated integration (via labs-saas-ctrl)
 
-The canonical end-to-end integration test for the MCP server is the wizard e2e suite in `labs-saas-ctrl`. It exercises the full OAuth 2.1 flow with real Auth0, Playwright-driven browser login, and authenticated MCP protocol calls.
+The canonical authenticated integration test for the MCP server is the `test:int:wizard` suite in `labs-saas-ctrl`. It exercises the full OAuth 2.1 flow with real Auth0, Playwright-driven browser login, and authenticated MCP protocol calls.
 
 ```bash
 cd ../labs-saas-ctrl && npm run test:int:wizard
@@ -108,7 +115,7 @@ The `docker-compose.yml` in this repo mounts both `db/init.sql` (MCP schema) and
 See `labs-saas-ctrl/.vibemd/TESTING.md` § "Testing Against gamma.5pm.ai" for IAP tunnel setup and env patching instructions. The MCP e2e live mode can also test against gamma:
 
 ```bash
-BASE_URI=https://gamma.5pm.ai npm run test:e2e:live
+BASE_URI=https://gamma.5pm.ai npm run test:int:live
 ```
 
 This verifies OAuth metadata, DCR, and 401 enforcement on the gamma MCP server. Full authenticated testing against gamma uses the saas-ctrl wizard e2e with patched `.env`.
@@ -120,7 +127,7 @@ Same pattern as gamma but targeting the production project (`ai-5pm-mcp`).
 ### MCP protocol tests
 
 ```bash
-BASE_URI=https://mcp.5pm.ai npm run test:e2e:live
+BASE_URI=https://mcp.5pm.ai npm run test:int:live
 ```
 
 ### Full integration tests (via labs-saas-ctrl)

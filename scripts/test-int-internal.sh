@@ -12,7 +12,7 @@ for arg in "$@"; do
 done
 
 echo "=================================================="
-echo "End-to-End Test - INTERNAL MODE"
+echo "Integration Test - INTERNAL MODE"
 if $LIVE_MODE; then
   echo "  (live mode — using running local stack)"
 fi
@@ -160,7 +160,7 @@ if $LIVE_MODE; then
   fi
 
   echo ""
-  echo "✅ E2E TEST (INTERNAL / LIVE MODE) COMPLETE!"
+  echo "✅ INTEGRATION TEST (INTERNAL / LIVE MODE) COMPLETE!"
   echo "============================================="
   echo "✅ OAuth metadata (RFC 8414) valid"
   echo "✅ Protected Resource Metadata (RFC 9728) valid"
@@ -311,7 +311,7 @@ else
   fi
 
   echo ""
-  echo "✅ E2E TEST (INTERNAL MODE) COMPLETE!"
+  echo "✅ INTEGRATION TEST (INTERNAL MODE) COMPLETE!"
   echo "====================================="
   echo "✅ Single server handling auth + MCP"
   echo "✅ OAuth flow working"

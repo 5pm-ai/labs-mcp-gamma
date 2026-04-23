@@ -183,9 +183,9 @@ The **ingest-worker** container image is built from **`Dockerfile.worker`** (see
 |---|---|
 | `rotate-secrets.sh` | Idempotent secret rotation — reads .env, pushes to Secret Manager, redeploys Cloud Run |
 | `ROTATE_SECRETS.md` | Runbook: per-provider rotation procedures, mapping reference, safety guards |
-| `test-e2e-all.sh` | Run all e2e test suites |
-| `test-e2e-internal.sh` | e2e tests for internal auth mode |
-| `test-e2e-external.sh` | e2e tests for external auth mode |
+| `test-int-all.sh` | Run all integration test suites (OAuth/DCR/protocol against HTTP) |
+| `test-int-internal.sh` | Integration tests for internal auth mode |
+| `test-int-external.sh` | Integration tests for external auth mode |
 
 ## `docs/`
 

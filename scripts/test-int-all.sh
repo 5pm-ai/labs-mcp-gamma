@@ -2,7 +2,7 @@
 set -e
 
 echo "=============================================="
-echo "End-to-End Test Suite - All Modes"
+echo "Integration Test Suite - All Modes"
 echo "=============================================="
 echo ""
 
@@ -19,11 +19,11 @@ MODE="${MODE:-all}"
 case "$MODE" in
     internal)
         echo "🔧 Running INTERNAL mode tests only..."
-        bash scripts/test-e2e-internal.sh $FLAGS
+        bash scripts/test-int-internal.sh $FLAGS
         ;;
     external)
         echo "🔧 Running EXTERNAL mode tests only..."
-        bash scripts/test-e2e-external.sh $FLAGS
+        bash scripts/test-int-external.sh $FLAGS
         ;;
     all|"")
         echo "🔧 Running tests for ALL modes..."
@@ -31,7 +31,7 @@ case "$MODE" in
 
         echo "▶️  Testing INTERNAL mode..."
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        if bash scripts/test-e2e-internal.sh $FLAGS; then
+        if bash scripts/test-int-internal.sh $FLAGS; then
             INTERNAL_RESULT="✅ PASSED"
         else
             INTERNAL_RESULT="❌ FAILED"
@@ -42,7 +42,7 @@ case "$MODE" in
 
         echo "▶️  Testing EXTERNAL mode..."
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        if bash scripts/test-e2e-external.sh $FLAGS; then
+        if bash scripts/test-int-external.sh $FLAGS; then
             EXTERNAL_RESULT="✅ PASSED"
         else
             EXTERNAL_RESULT="❌ FAILED"
@@ -50,7 +50,7 @@ case "$MODE" in
 
         echo ""
         echo "=============================================="
-        echo "E2E TEST SUITE SUMMARY"
+        echo "INTEGRATION TEST SUITE SUMMARY"
         echo "=============================================="
         echo "Internal Mode: $INTERNAL_RESULT"
         echo "External Mode: $EXTERNAL_RESULT"
