@@ -1,5 +1,30 @@
 # Lessons Learned
 
+### [2026-04-23] `with-cloud.sh` must pin Playwright `baseURL` to the cloud SPA — partial env redirects cause UI-vs-DB drift
+
+**Context:** Post-gamma-deploy test sweep (`deploy-gamma.sh` → `with-cloud.sh gamma -- npm run test:browser`). Wizard / billing / scopes / platform / validation / MCP e2e all green (272 + MCP). 30 / 37 browser tests green. 3 deterministic browser failures: `org-user-dashboard-nav` (lands on `/dashboard` not `/dashboard/runtimes`), `snowflake-setup-sql › suggest-name` (created keypair row never appears), `warehouse-keypairs › cannot delete while referenced` (`warehouse_connectors_keypair_id_fkey` violated on direct INSERT).
+
+**Symptoms:** Each failure had its own surface error. No single obvious cause. Suites that *don't* use the browser (wizard, billing, etc.) all passed against the exact same gamma + IAP tunnel + DB URLs.
+
+**Root Cause:** `with-cloud.sh gamma` redirected the subprocess's `DATABASE_*`, `TEST_API_BASE_URL`, `TEST_MCP_BASE_URL`, `AUTH0_AUDIENCE` to gamma — but **not** the Playwright `baseURL`. `playwright.routing.config.ts` reads `process.env.TEST_SPA_BASE_URL || "http://localhost:8080"`, and nobody was setting `TEST_SPA_BASE_URL`. Result:
+
+- Browser navigates → `http://localhost:8080` (local Vite dev SPA).
+- SPA's `/api/*` → Vite proxy → `localhost:8081` (local ctrl-api) → **local docker postgres**.
+- Test's `query()` / `getCtrlPool()` / direct `fetch(TEST_API_BASE_URL…)` → **gamma-pg**.
+
+So the UI and the test's DB assertions silently operated on different databases. Any test that (a) writes via the UI and then (b) reads/writes via `query()` or direct API drifted — exactly the 3 failures. The other 30 browser tests were either pure UI (landing-links, SQL preview, form rendering) or self-contained UI create+delete, so they passed on the local stack and happened to be indistinguishable from a real gamma run.
+
+**Resolution:** One-line patch — add `TEST_SPA_BASE_URL="$BASE_URL"` to the `env ... "$@"` invocation in `scripts/with-cloud.sh` (alongside the other `TEST_*` vars). Now `test:browser` through the wrapper loads the *deployed* SPA at `https://gamma.5pm.ai` / `https://mcp.5pm.ai`; that SPA's baked-in `VITE_AUTH0_AUDIENCE` matches the target ctrl-api, and same-origin `/api/*` calls hit the same gamma-pg the test is inspecting.
+
+**Prevention:**
+- `with-cloud.sh` header and `INFRASTRUCTURE.md` entry now enumerate **all** injected `TEST_*` vars explicitly and call out the UI-vs-DB split.
+- `labs-saas-ctrl/.vibemd/TESTING.md` env-vars table now lists `TEST_SPA_BASE_URL` next to `TEST_API_BASE_URL` / `TEST_MCP_BASE_URL`.
+- Checklist whenever a new test runtime reads from the cloud env via `with-cloud.sh`: verify every network boundary (browser → SPA → API → DB) resolves to the *same* environment, not just the ones the test scaffolding touches directly.
+
+**Refs:** `labs-mcp-gamma/scripts/with-cloud.sh`, `labs-saas-ctrl/playwright.routing.config.ts:16`, `labs-saas-ctrl/vite.config.ts:28-34`, `labs-saas-ctrl/tests/browser/{org-user-dashboard-nav,snowflake-setup-sql,warehouse-keypairs}.spec.ts`.
+
+---
+
 ### [2026-04-23] `db-migrate` extended to apply both repos' `init.sql` (closes 03-31, 04-16, 04-21 gaps)
 
 **Context:** Three prior incidents (`ctrl_teams_update` missing on prod 2026-03-31, hit again 2026-04-16, `warehouse_keypairs` missing on gamma 2026-04-21) all had the same root cause: the `db-migrate` Cloud Run Job ran from the `mcp-server` image, which only baked in `labs-mcp-gamma/db/init.sql`. The `labs-saas-ctrl/db/init.sql` (~43 KB of ctrl schema, most of the shared DB) was never executed by the pipeline. Remediation required IAP-bastion `psql`, which violated the no-workarounds rule.

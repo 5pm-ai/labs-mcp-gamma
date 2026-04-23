@@ -23,6 +23,9 @@
 #   INGEST_DATABASE_URL  ingest_app, via tunnel
 #   TEST_API_BASE_URL    https://gamma.5pm.ai | https://mcp.5pm.ai
 #   TEST_MCP_BASE_URL    same as TEST_API_BASE_URL
+#   TEST_SPA_BASE_URL    same as TEST_API_BASE_URL (Playwright baseURL so
+#                        browser tests hit the deployed SPA in the same env
+#                        the DB / API point at — avoids UI-vs-DB split)
 #   AUTH0_AUDIENCE       api.gamma.5pm.ai | api.mcp.5pm.ai
 #
 # Prerequisites:
@@ -215,6 +218,7 @@ env \
   INGEST_DATABASE_URL="$INGEST_LOCAL" \
   TEST_API_BASE_URL="$BASE_URL" \
   TEST_MCP_BASE_URL="$BASE_URL" \
+  TEST_SPA_BASE_URL="$BASE_URL" \
   AUTH0_AUDIENCE="$AUDIENCE" \
   "$@"
 CMD_EXIT=$?
