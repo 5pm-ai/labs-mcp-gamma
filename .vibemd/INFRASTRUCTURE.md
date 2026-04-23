@@ -103,7 +103,7 @@
 | prod-redis | Memorystore | Redis 7.2 (Standard HA, 1GB) | us-east4, private IP 10.20.1.4:6378 | persistent | braun | 2026-04-07 | TLS, PSA connect mode, HA failover replica |
 | prod-bastion | Compute Engine | Bastion host (e2-micro, Debian 12) | us-east4-a, 10.10.2.2 | persistent | braun | 2026-04-07 | No public IP. IAP SSH only. SA: sa-bastion |
 | prod-docker | Artifact Registry | Docker image repository | us-east4 | persistent | braun | 2026-04-07 | IAM-gated |
-| prod-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-04-07 | Min 2 instances, 1GiB. SA: sa-mcp-server |
+| prod-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-04-20 | Min 2 / Max 10 instances, 1GiB, 1 vCPU. SA: sa-mcp-server. **Pinned in deploy-prod.sh**: `--timeout=3600` (SSE GET must outlive default 300s LB cut) and `--no-cpu-throttling` (CPU always-allocated so session Redis pub/sub subscriptions survive idle). See LESSONS_LEARNED.md 2026-04-20 entry. |
 | prod-ctrl-api | Cloud Run Service | Control plane API | us-east4 | persistent | braun | 2026-04-07 | Min 2 instances, 512MiB. SA: sa-mcp-server |
 | prod-ctrl | Cloud Run Service | Control plane SPA | us-east4 | persistent | braun | 2026-04-13 | Min 1 instance, 256MiB. nginx static. Image: ctrl-plane:v15 |
 | prod-ctrl-api | Cloud Run Service | Control plane API | us-east4 | persistent | braun | 2026-04-10 | Min 2 instances, 512MiB. Image: ctrl-api:v4. SF write probe: 2-category (permanent vs temporary). |

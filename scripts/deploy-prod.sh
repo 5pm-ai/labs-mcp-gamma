@@ -174,8 +174,21 @@ fi
 
 log "Deploying services..."
 
+# prod-mcp config pins (see LESSONS_LEARNED.md: "prod-mcp red dot from LB
+# timeout + CPU throttling drift"). These MUST be re-asserted on every deploy
+# so the service can't silently drift back to defaults:
+#   --timeout=3600       Streamable HTTP SSE GET stream must outlive Cloud
+#                        Run's default 300s LB cutoff (default would sever the
+#                        notification stream every 5 min → Cursor red dot).
+#   --no-cpu-throttling  CPU always-allocated on min instances so the Redis
+#                        pub/sub subscription backing each session stays alive
+#                        between requests (default throttling drops the sub →
+#                        next request 404s "Session expired or not found").
 gcloud run services update prod-mcp --region="$REGION" --project="$PROJECT" \
-  --image="$MCP_TAG" --quiet
+  --image="$MCP_TAG" \
+  --timeout=3600 \
+  --no-cpu-throttling \
+  --quiet
 ok "Deployed prod-mcp (${MCP_VER})"
 
 gcloud run services update prod-ctrl-api --region="$REGION" --project="$PROJECT" \

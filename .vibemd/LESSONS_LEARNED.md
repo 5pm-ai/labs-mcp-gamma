@@ -251,3 +251,33 @@
 **Resolution:** (1) Body limit → 10MB. (2) `databaseName` added to `ApiScopeColumn`, `CatalogColumn`, `colKey` (5-segment), `parseColKey`, `catalogToTree`, ColumnTree UI. (3) Batch INSERT of 500 rows. E2E test with 10K columns.
 **Prevention:** When propagating a new field through the backend, always audit the full frontend round-trip: types, key serialization, tree grouping, display, and test coverage.
 **Refs:** saas-ctrl `server/src/routes/scopes.ts`, `src/pages/DashboardScopes.tsx`
+
+---
+
+### [2026-04-20] prod-mcp red dot from Cloud Run config drift vs gamma — 300s LB cut + throttled Redis sub
+
+**Context:** Cursor users on `mcp.5pm.ai` reported the MCP toggle staying green but the status dot flipping red, with client logs showing `Streamable HTTP error: Failed to open SSE stream: <none>` and, later, recovered sessions 404-ing on subsequent requests. Previously fixed on gamma weeks ago; prod had the same symptoms because the gamma fix was never propagated.
+
+**Symptoms:**
+- Client: `Failed to open SSE stream: <none>` ~5 min after CreateClient success.
+- Server access logs on `prod-mcp`: `GET /mcp` requests completing with status 200 and latency **exactly 301.000s** (three examples in one hour across Cursor + Claude clients), each paired with a Cloud Run `WARNING Truncated response body`.
+- Separately: after the 5-min cut was fixed, some sessions still 404-ed on idle (`shttp.ts` path: `Session not live, returning 404 so client can re-initialize`) — `PUBSUB NUMSUB` on the session's channel had fallen to 0 despite `minScale=2`.
+
+**Root Cause:** Two independent Cloud Run service-level config drifts between gamma and prod:
+
+1. `timeoutSeconds=300` on `prod-mcp` (default) vs `3600` on `gamma-mcp`. The MCP Streamable HTTP transport opens a long-lived `GET /mcp` as the server→client SSE notification stream. Cloud Run's LB severs any request at `timeoutSeconds`, producing an incomplete SSE frame that the client logs as `<none>` status. Gamma had `3600` since at least March 27; prod stood up April 7 and inherited the 300s default.
+2. `cpu-throttling=true` (default) on `prod-mcp`. `ServerRedisTransport` keeps a long-lived Redis pub/sub subscription per session (`mcp:shttp:toserver:{sessionId}`). Between requests, default Cloud Run throttles CPU on min instances to near-zero — the Node event loop can't service keepalives, Memorystore reaps the connection, the subscription disappears, and `isLive(sessionId)` returns false on the next request → 404.
+
+**Resolution:** Two service-level flags on `prod-mcp`:
+- `gcloud run services update prod-mcp --timeout=3600` (revision 00011)
+- `gcloud run services update prod-mcp --no-cpu-throttling` (revision 00012)
+
+Then **pinned both in `scripts/deploy-prod.sh`** on the `prod-mcp` update line so future image deploys re-assert them and can't silently drift back to defaults.
+
+**Prevention:**
+- Any Cloud Run service hosting a long-lived streaming endpoint (SSE, WebSocket-over-HTTP, MCP Streamable HTTP) must set `timeoutSeconds` above the intended stream lifetime — the default 300s is not survivable for notification channels.
+- Any Cloud Run service holding persistent outbound connections (Redis pub/sub, long-poll subscriptions, background timers) between requests must set `--no-cpu-throttling`. Default CPU throttling will silently break these without error logs.
+- All prod Cloud Run service config that diverges from defaults must be pinned in the deploy script, not just "set once in the cloud." Same principle as the Apr 13 Auth0 `VITE_*` build-arg lesson: prod state must be explicit and self-healing on every deploy.
+- When a feature is added/fixed on gamma, audit the matching prod service config before closing the ticket. Revision-history parity check is cheap: `gcloud run revisions list --service=<svc> --format='table(..., spec.timeoutSeconds)'` across both projects.
+
+**Refs:** `scripts/deploy-prod.sh` (prod-mcp pin block), `.vibemd/INFRASTRUCTURE.md` (prod-mcp row), `src/modules/mcp/handlers/shttp.ts` (isLive 404 path), `src/modules/mcp/services/redisTransport.ts` (ServerRedisTransport)
