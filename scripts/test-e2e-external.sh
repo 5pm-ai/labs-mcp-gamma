@@ -101,7 +101,7 @@ if $LIVE_MODE; then
   echo ""
   echo "📎 For full authenticated MCP testing (external auth separation):"
   echo "   Run standalone mode: npm run test:e2e:external"
-  echo "   Or full integration: cd ../labs-saas-ctrl && npm run test:wizard"
+  echo "   Or full integration: cd ../labs-saas-ctrl && npm run test:int:wizard"
 
 else
   # ── Standalone mode: starts separate auth + MCP servers ────────────────

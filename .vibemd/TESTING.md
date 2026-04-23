@@ -54,7 +54,7 @@ Standalone mode builds the project, starts fresh server instances on port 8090 (
 The canonical end-to-end integration test for the MCP server is the wizard e2e suite in `labs-saas-ctrl`. It exercises the full OAuth 2.1 flow with real Auth0, Playwright-driven browser login, and authenticated MCP protocol calls.
 
 ```bash
-cd ../labs-saas-ctrl && npm run test:wizard
+cd ../labs-saas-ctrl && npm run test:int:wizard
 ```
 
 This covers:

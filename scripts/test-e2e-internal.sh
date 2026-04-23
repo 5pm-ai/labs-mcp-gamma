@@ -127,7 +127,7 @@ if $LIVE_MODE; then
   echo "⚠️  Live mode: skipping mock IdP flow (server uses real Auth0)"
   echo "   Full authenticated MCP testing (OAuth + tools/resources/prompts)"
   echo "   is covered by labs-saas-ctrl wizard e2e:"
-  echo "     cd ../labs-saas-ctrl && npm run test:wizard"
+  echo "     cd ../labs-saas-ctrl && npm run test:int:wizard"
   echo ""
   echo "🧪 PHASE 3: Unauthenticated MCP Endpoint Verification"
   echo "======================================================="
@@ -169,7 +169,7 @@ if $LIVE_MODE; then
   echo "✅ /mcp correctly rejects unauthenticated requests"
   echo ""
   echo "📎 For full authenticated MCP testing:"
-  echo "   cd ../labs-saas-ctrl && npm run test:wizard"
+  echo "   cd ../labs-saas-ctrl && npm run test:int:wizard"
 
 else
   # ── Standalone mode: uses mock IdP ──────────────────────────────────────

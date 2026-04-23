@@ -9,10 +9,10 @@
 #
 # Examples:
 #   cd ../labs-saas-ctrl
-#   ../labs-mcp-gamma/scripts/with-cloud.sh gamma -- npm run test:browser
-#   ../labs-mcp-gamma/scripts/with-cloud.sh prod  -- npm run test:wizard
+#   ../labs-mcp-gamma/scripts/with-cloud.sh gamma -- npm run test:e2e
+#   ../labs-mcp-gamma/scripts/with-cloud.sh prod  -- npm run test:int:wizard
 #   ../labs-mcp-gamma/scripts/with-cloud.sh gamma --port 5444 -- npm test
-#   ../labs-mcp-gamma/scripts/with-cloud.sh gamma --dry-run -- npm run test:browser
+#   ../labs-mcp-gamma/scripts/with-cloud.sh gamma --dry-run -- npm run test:e2e
 #
 # The `--` separator is optional but recommended when the command has flags.
 #

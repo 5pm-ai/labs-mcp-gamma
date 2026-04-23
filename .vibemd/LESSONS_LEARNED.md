@@ -2,7 +2,7 @@
 
 ### [2026-04-23] `with-cloud.sh` must pin Playwright `baseURL` to the cloud SPA — partial env redirects cause UI-vs-DB drift
 
-**Context:** Post-gamma-deploy test sweep (`deploy-gamma.sh` → `with-cloud.sh gamma -- npm run test:browser`). Wizard / billing / scopes / platform / validation / MCP e2e all green (272 + MCP). 30 / 37 browser tests green. 3 deterministic browser failures: `org-user-dashboard-nav` (lands on `/dashboard` not `/dashboard/runtimes`), `snowflake-setup-sql › suggest-name` (created keypair row never appears), `warehouse-keypairs › cannot delete while referenced` (`warehouse_connectors_keypair_id_fkey` violated on direct INSERT).
+**Context:** Post-gamma-deploy test sweep (`deploy-gamma.sh` → `with-cloud.sh gamma -- npm run test:e2e`, then called `test:browser`). Wizard / billing / scopes / platform / validation / MCP e2e all green (272 + MCP). 30 / 37 browser tests green. 3 deterministic browser failures: `org-user-dashboard-nav` (lands on `/dashboard` not `/dashboard/runtimes`), `snowflake-setup-sql › suggest-name` (created keypair row never appears), `warehouse-keypairs › cannot delete while referenced` (`warehouse_connectors_keypair_id_fkey` violated on direct INSERT).
 
 **Symptoms:** Each failure had its own surface error. No single obvious cause. Suites that *don't* use the browser (wizard, billing, etc.) all passed against the exact same gamma + IAP tunnel + DB URLs.
 
@@ -14,7 +14,7 @@
 
 So the UI and the test's DB assertions silently operated on different databases. Any test that (a) writes via the UI and then (b) reads/writes via `query()` or direct API drifted — exactly the 3 failures. The other 30 browser tests were either pure UI (landing-links, SQL preview, form rendering) or self-contained UI create+delete, so they passed on the local stack and happened to be indistinguishable from a real gamma run.
 
-**Resolution:** One-line patch — add `TEST_SPA_BASE_URL="$BASE_URL"` to the `env ... "$@"` invocation in `scripts/with-cloud.sh` (alongside the other `TEST_*` vars). Now `test:browser` through the wrapper loads the *deployed* SPA at `https://gamma.5pm.ai` / `https://mcp.5pm.ai`; that SPA's baked-in `VITE_AUTH0_AUDIENCE` matches the target ctrl-api, and same-origin `/api/*` calls hit the same gamma-pg the test is inspecting.
+**Resolution:** One-line patch — add `TEST_SPA_BASE_URL="$BASE_URL"` to the `env ... "$@"` invocation in `scripts/with-cloud.sh` (alongside the other `TEST_*` vars). Now `test:e2e` through the wrapper loads the *deployed* SPA at `https://gamma.5pm.ai` / `https://mcp.5pm.ai`; that SPA's baked-in `VITE_AUTH0_AUDIENCE` matches the target ctrl-api, and same-origin `/api/*` calls hit the same gamma-pg the test is inspecting.
 
 **Prevention:**
 - `with-cloud.sh` header and `INFRASTRUCTURE.md` entry now enumerate **all** injected `TEST_*` vars explicitly and call out the UI-vs-DB split.
