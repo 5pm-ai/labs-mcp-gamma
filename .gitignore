@@ -144,3 +144,6 @@ snowflake_credentials.md
 # Copied into the mcp-server image at deploy time from labs-saas-ctrl/db/init.sql
 # so the db-migrate job applies both schemas. See scripts/deploy-gamma.sh.
 db/ctrl-init.sql
+
+# Transient log from scripts/with-cloud.sh (IAP tunnel wrapper)
+scripts/.tunnel-*.log

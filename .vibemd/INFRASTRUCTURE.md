@@ -77,6 +77,7 @@
 | rotate-secrets.sh | script | Idempotent secret rotation across MCP + ctrl repos | scripts/rotate-secrets.sh | persistent | braun | 2026-04-03 | Reads .env, pushes to Secret Manager, redeploys Cloud Run. See scripts/ROTATE_SECRETS.md |
 | deploy-gamma.sh | script | Deploy pipeline to gamma.5pm.ai | scripts/deploy-gamma.sh | persistent | braun | 2026-04-23 | Builds, pushes, migrates, deploys. Auto-increments versions. `--only <mcp\|worker\|ctrl-api\|ctrl\|migrate>` cherry-pick flag (repeatable; default = all). Stages `labs-saas-ctrl/db/init.sql` into `db/ctrl-init.sql` at build time for db-migrate. |
 | deploy-prod.sh | script | Deploy pipeline to mcp.5pm.ai | scripts/deploy-prod.sh | persistent | braun | 2026-04-23 | Same as gamma but with explicit prod VITE_* build args + `--no-cpu-throttling` / `--timeout=3600` pins on prod-mcp. SPA verifier uses `LC_ALL=C grep -a`. Same `--only` cherry-pick flag. |
+| with-cloud.sh | script | IAP tunnel + env-injected subprocess for testing against gamma/prod | scripts/with-cloud.sh | persistent | braun | 2026-04-23 | `./scripts/with-cloud.sh <gamma\|prod> [--port N] [--dry-run] -- <cmd...>` opens `gcloud ssh -L 5434\|5435:10.20.0.3:5432` in the background, fetches DB URL secrets, exec's `<cmd>` with `DATABASE_*` / `TEST_API_BASE_URL` / `AUTH0_AUDIENCE` injected **into the subprocess only**. Never touches `.env`. Tunnel dies on EXIT/INT/TERM. |
 
 ## Local Dev Infrastructure
 
