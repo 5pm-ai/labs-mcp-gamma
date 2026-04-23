@@ -6,7 +6,10 @@
 |---|---|
 | `docker-compose.yml` | Local dev infrastructure (Redis + Postgres) |
 | `Dockerfile.worker` | Container image for **gamma-ingest-worker** (Cloud Run Job) |
-| `db/init.sql` | Postgres schema init — roles, tables, RLS setup |
+| `db/init.sql` | Postgres schema init — roles, tables, RLS setup (MCP schema) |
+| `db/ctrl-init.sql` | Staged copy of `labs-saas-ctrl/db/init.sql`, produced by `deploy-{gamma,prod}.sh` at build time so `db-migrate` applies both schemas. Gitignored. |
+| `db/migrate.cjs` | Cloud Run Job entrypoint — applies `db/init.sql` then `db/ctrl-init.sql` (if present). Idempotent. |
+| `db/migrate.test.ts` | Jest integration test for the migrate flow against local docker postgres. |
 | `package.json` | Node.js dependencies and scripts |
 | `tsconfig.json` | TypeScript compiler config |
 | `jest.config.js` | Jest test runner config (ESM mode) |

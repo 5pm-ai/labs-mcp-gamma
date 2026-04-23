@@ -1,5 +1,28 @@
 # Lessons Learned
 
+### [2026-04-23] `db-migrate` extended to apply both repos' `init.sql` (closes 03-31, 04-16, 04-21 gaps)
+
+**Context:** Three prior incidents (`ctrl_teams_update` missing on prod 2026-03-31, hit again 2026-04-16, `warehouse_keypairs` missing on gamma 2026-04-21) all had the same root cause: the `db-migrate` Cloud Run Job ran from the `mcp-server` image, which only baked in `labs-mcp-gamma/db/init.sql`. The `labs-saas-ctrl/db/init.sql` (~43 KB of ctrl schema, most of the shared DB) was never executed by the pipeline. Remediation required IAP-bastion `psql`, which violated the no-workarounds rule.
+
+**Resolution (MVP, least-risk):**
+- `db/migrate.cjs` now applies `db/init.sql` first, then `db/ctrl-init.sql` if present (skips gracefully if not).
+- `scripts/deploy-{gamma,prod}.sh` stage `../labs-saas-ctrl/db/init.sql` as `db/ctrl-init.sql` in the MCP repo just before `docker buildx build`, and remove it on exit via `trap`. The existing `COPY db/ db/` in the Dockerfile picks it up automatically.
+- `db/ctrl-init.sql` is `.gitignore`d so the temp file never lands in git.
+- `.dockerignore` already excludes `**/*.test.ts`, so the new `db/migrate.test.ts` is not shipped in the prod image.
+- Deploy scripts gained `--only <component>` cherry-pick flag (`mcp|worker|ctrl-api|ctrl|migrate`, repeatable). Default behavior unchanged (all 5).
+- Deploy scripts now hard-fail if `../labs-saas-ctrl` is missing when any ctrl/migrate component is selected (previously silent `|| true`).
+- `deploy-prod.sh` SPA verifier now uses `LC_ALL=C grep -a` to stop false-negatives on minified JS (Apr-16 lesson closed).
+
+**Safety properties:** Both `init.sql` files are fully idempotent (only `DROP POLICY IF EXISTS`; every `CREATE TABLE/INDEX/UNIQUE` uses `IF NOT EXISTS`; every `ADD COLUMN` uses `IF NOT EXISTS`; role creation is wrapped in `DO $$ IF NOT EXISTS $$`; zero `DROP TABLE`/`TRUNCATE`/`DELETE`/`INSERT` statements). Re-running against a populated DB is a no-op.
+
+**Prevention:** Any future schema change in either repo's `db/init.sql` now automatically lands on gamma/prod via a single `deploy-*.sh` run. Cherry-pick `--only migrate` enables schema-only hotfixes without rebuilding all service images (though the mcp image is still rebuilt to pick up the newly-staged ctrl SQL).
+
+**Verified locally:** `db/migrate.test.ts` spawns `db/migrate.cjs` against the local docker-compose postgres, confirms both schemas land (including `warehouse_keypairs`), and a second run is a no-op. Full `npm test` + saas-ctrl `test:all` green after changes.
+
+**Refs:** `db/migrate.cjs`, `db/migrate.test.ts`, `scripts/deploy-gamma.sh`, `scripts/deploy-prod.sh`, `.gitignore`. Closes 2026-03-31, 2026-04-16, 2026-04-21 lessons.
+
+---
+
 ### [2026-03-17] FORCE ROW LEVEL SECURITY with no policies denies everything
 
 **Context:** First live test of MCP server with Cursor and MCP Inspector after implementing Postgres-backed DCR client store.

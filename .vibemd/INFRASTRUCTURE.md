@@ -18,7 +18,7 @@
 | gamma-bastion | Compute Engine | Bastion host (e2-micro, Debian 12) | us-east4-a, 10.10.2.2 | persistent | braun | 2026-03-17 | No public IP. IAP SSH only. SA: sa-bastion |
 | gamma-docker | Artifact Registry | Docker image repository | us-east4 | persistent | braun | 2026-03-17 | IAM-gated, no public access |
 | gamma-mcp | Cloud Run Service | MCP server (production) | us-east4 | persistent | braun | 2026-04-14 | Ingress: internal-and-cloud-load-balancing. SA: sa-mcp-server. Image: mcp-server:v18. max-instances: 3. Pool.max: 3. |
-| db-migrate | Cloud Run Job | Database schema init / migrations | us-east4 | persistent | braun | 2026-03-17 | On-demand: `gcloud run jobs execute db-migrate` SA: sa-db-admin |
+| db-migrate | Cloud Run Job | Database schema init / migrations (mcp + ctrl) | us-east4 | persistent | braun | 2026-04-23 | On-demand: `gcloud run jobs execute db-migrate`. Runs `db/migrate.cjs` which applies `db/init.sql` (mcp) then `db/ctrl-init.sql` (ctrl, staged by deploy script from `labs-saas-ctrl/db/init.sql`). SA: sa-db-admin. |
 | gamma-ingest-worker | Cloud Run Job | Metadata ingest pipeline (preflight → upsert) | us-east4 | persistent | braun | 2026-03-24 | No public ingress. SA: sa-ingest-worker. Dispatched by ctrl-api |
 | sa-ingest-worker | IAM Service Account | Runtime identity for ingest job | ai-5pm-labs.iam.gserviceaccount.com | persistent | braun | 2026-03-24 | See Service Accounts table for IAM bindings |
 | ingest_app | Postgres role | RLS-scoped DB role for ingest worker | gamma-pg / mcp | persistent | braun | 2026-03-24 | No credential write access; see db migrations |
@@ -75,8 +75,8 @@
 | Name/ID | Type | Purpose | Location/Path | Lifecycle | Owner | Date | Notes |
 |---|---|---|---|---|---|---|---|
 | rotate-secrets.sh | script | Idempotent secret rotation across MCP + ctrl repos | scripts/rotate-secrets.sh | persistent | braun | 2026-04-03 | Reads .env, pushes to Secret Manager, redeploys Cloud Run. See scripts/ROTATE_SECRETS.md |
-| deploy-gamma.sh | script | Full deploy pipeline to gamma.5pm.ai | scripts/deploy-gamma.sh | persistent | braun | 2026-04-14 | Builds, pushes, migrates, deploys all 4 images. Auto-increments versions. |
-| deploy-prod.sh | script | Full deploy pipeline to mcp.5pm.ai | scripts/deploy-prod.sh | persistent | braun | 2026-04-14 | Same as gamma but with explicit prod VITE_* build args. Includes SPA build-arg verification. |
+| deploy-gamma.sh | script | Deploy pipeline to gamma.5pm.ai | scripts/deploy-gamma.sh | persistent | braun | 2026-04-23 | Builds, pushes, migrates, deploys. Auto-increments versions. `--only <mcp\|worker\|ctrl-api\|ctrl\|migrate>` cherry-pick flag (repeatable; default = all). Stages `labs-saas-ctrl/db/init.sql` into `db/ctrl-init.sql` at build time for db-migrate. |
+| deploy-prod.sh | script | Deploy pipeline to mcp.5pm.ai | scripts/deploy-prod.sh | persistent | braun | 2026-04-23 | Same as gamma but with explicit prod VITE_* build args + `--no-cpu-throttling` / `--timeout=3600` pins on prod-mcp. SPA verifier uses `LC_ALL=C grep -a`. Same `--only` cherry-pick flag. |
 
 ## Local Dev Infrastructure
 
@@ -107,7 +107,7 @@
 | prod-ctrl-api | Cloud Run Service | Control plane API | us-east4 | persistent | braun | 2026-04-07 | Min 2 instances, 512MiB. SA: sa-mcp-server |
 | prod-ctrl | Cloud Run Service | Control plane SPA | us-east4 | persistent | braun | 2026-04-13 | Min 1 instance, 256MiB. nginx static. Image: ctrl-plane:v15 |
 | prod-ctrl-api | Cloud Run Service | Control plane API | us-east4 | persistent | braun | 2026-04-10 | Min 2 instances, 512MiB. Image: ctrl-api:v4. SF write probe: 2-category (permanent vs temporary). |
-| db-migrate | Cloud Run Job | Database schema init | us-east4 | persistent | braun | 2026-04-07 | SA: sa-db-admin |
+| db-migrate | Cloud Run Job | Database schema init (mcp + ctrl) | us-east4 | persistent | braun | 2026-04-23 | Runs `db/migrate.cjs` which applies both mcp and ctrl `init.sql`. Image: mcp-server (rebuilt each deploy so ctrl SQL is current). SA: sa-db-admin. |
 | prod-ingest-worker | Cloud Run Job | Ingest pipeline worker | us-east4 | persistent | braun | 2026-04-07 | SA: sa-ingest-worker |
 | prod-keys | KMS keyring | Credential encryption keys | us-east4 | persistent | braun | 2026-04-07 | |
 | prod-credentials-key | KMS key | Envelope encrypt warehouse/sink creds | us-east4 | persistent | braun | 2026-04-07 | |
